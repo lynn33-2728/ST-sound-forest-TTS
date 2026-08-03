@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.0.5";
+const extensionVersion = "2.0.6";
 
 // 全局状态管理
 const audioState = {
@@ -152,12 +152,18 @@ async function verifyVolcCloneVoice(speakerId) {
   if (!appId || !accessKey) {
     throw new Error("请先在上方填写火山引擎的 AppID 和 Access Token");
   }
+  // get_voice 的鉴权与 TTS 合成不同：旧版控制台用 X-Api-App-Key（不是 -App-Id）+ 必填 X-Api-Request-Id
+  const requestId = (crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  }));
   const resp = await fetch("/proxy/" + encodeURIComponent(VOLC_GET_VOICE_URL), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Api-App-Id": appId,
+      "X-Api-App-Key": appId,
       "X-Api-Access-Key": accessKey,
+      "X-Api-Request-Id": requestId,
     },
     body: JSON.stringify({ speaker_id: speakerId }),
   });
@@ -3101,6 +3107,11 @@ async function deleteCustomVoice(uri, name) {
 jQuery(async () => {
   const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
   $("#extensions_settings").append(settingsHtml);
+
+  // 使用说明里的图片：相对路径会指到酒馆首页，要补扩展目录前缀
+  $(".sf-guide img[data-guide]").each(function() {
+    $(this).attr("src", `${extensionFolderPath}/${$(this).attr("data-guide")}`);
+  });
   
   // Inline drawer 折叠/展开功能 - 使用延迟绑定
   setTimeout(() => {
@@ -3363,9 +3374,10 @@ jQuery(async () => {
       statusEl.text(r.text).css("color", r.ok ? "#7bd88f" : "#ff8a80");
       ttsLog("🔍 复刻音色 " + v.id + " 状态：" + r.text);
     } catch (e) {
-      statusEl.text("查询失败").css("color", "#ff8a80");
-      toastr.error(e && e.message ? e.message : String(e), "复刻音色验证");
-      ttsLog("❌ 复刻音色验证失败：" + (e && e.message ? e.message : e));
+      const msg = e && e.message ? e.message : String(e);
+      statusEl.text("❌ " + msg.slice(0, 24)).css("color", "#ff8a80").attr("title", msg);
+      toastr.error(msg, "复刻音色验证");
+      ttsLog("❌ 复刻音色验证失败：" + msg);
     }
   });
   $("#volc_speaker").on("change", function() {

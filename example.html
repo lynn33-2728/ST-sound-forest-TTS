@@ -147,7 +147,7 @@
                                     </div>
                                     <div class="sf-setting-row">
                                         <label for="volc_access_key">Access Token：</label>
-                                        <input id="volc_access_key" type="password" placeholder="输入火山引擎 Access Token" />
+                                        <input id="volc_access_key" type="text" placeholder="输入火山引擎 Access Token" />
                                     </div>
                                     <div class="setting-item button-group">
                                         <button id="test_volcano_connection" class="menu_button">测试连接</button>
@@ -159,11 +159,11 @@
                                         <ol>
                                             <li><b>开启酒馆的 CORS 代理（必做）</b>：打开酒馆目录的 <code>config.yaml</code>，把 <code>enableCorsProxy</code> 改为 <code>true</code> 保存，然后<b>重启酒馆</b>（重启进程，不是 F5 刷新）。火山 / MiniMax 都靠它中转请求。</li>
                                             <li><b>开通语音服务</b>：到 <a href="https://console.volcengine.com/speech/new/setting/activate" target="_blank">开通管理</a> 开通需要的项目（建议一次性开通）
-                                                <img src="guide-activate.png" alt="开通管理入口" /></li>
+                                                <img data-guide="guide-activate.png" alt="开通管理入口" /></li>
                                             <li><b>获取 AppID 和 Access Token</b>：在 <a href="https://console.volcengine.com/speech/service/8" target="_blank">服务接口认证信息</a> 页面复制，填到上方两个框里
-                                                <img src="guide-token.png" alt="获取 AppID 和 Access Token" /></li>
+                                                <img data-guide="guide-token.png" alt="获取 AppID 和 Access Token" /></li>
                                             <li><b>声音复刻（可选）</b>：到 <a href="https://console.volcengine.com/speech/new/experience/clone" target="_blank">声音复刻</a> 上传音频训练音色，完成后在「音色库」复制音色ID（S_xxx），回到下方「我的复刻音色」添加
-                                                <img src="guide-clone.png" alt="声音复刻入口" /></li>
+                                                <img data-guide="guide-clone.png" alt="声音复刻入口" /></li>
                                         </ol>
                                         <small class="sf-guide-credit">参考说明来自「小白XTTS」</small>
                                     </details>
