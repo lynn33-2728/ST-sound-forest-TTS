@@ -1,0 +1,721 @@
+<div class="siliconflow-extension-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-header inline-drawer-toggle">
+            <b>声林 · 多引擎语音（TTS）</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
+        </div>
+
+        <div class="inline-drawer-content" style="display: none;">
+            <div class="sf-settings">
+                <section class="sf-section sf-progress-note">
+                    <small>
+                        • 版本：声林TTS语音插件 2.0.0（硅基流动 / 火山引擎 / MiniMax）by lynn琳<br>
+                        • 按住左侧 🔊 拖动进度条位置，▶ 重听用缓存，不重复扣费。
+                    </small>
+                </section>
+
+                <div class="sf-layout">
+                    <nav class="sf-side-nav">
+                        <button type="button" class="sf-nav-item sf-nav-active" data-pane="api">API</button>
+                        <button type="button" class="sf-nav-item" data-pane="text">文本截取</button>
+                        <button type="button" class="sf-nav-item" data-pane="cache">缓存</button>
+                        <button type="button" class="sf-nav-item" data-pane="log">日志</button>
+                    </nav>
+
+                    <div class="sf-panes">
+                        <!-- ==================== API 面板 ==================== -->
+                        <section class="sf-pane" id="sf_pane_api">
+                            <div class="sf-setting-row">
+                                <label for="tts_engine">TTS引擎：</label>
+                                <select id="tts_engine">
+                                    <option value="siliconflow">硅基流动</option>
+                                    <option value="volcano">火山引擎</option>
+                                    <option value="minimax">MiniMax</option>
+                                </select>
+                            </div>
+
+                            <!-- ---------- 硅基流动组 ---------- -->
+                            <div id="sf_engine_silicon" class="sf-engine-block">
+                                <section class="sf-section">
+                                    <h4>硅基流动 · API设定</h4>
+                                    <div class="sf-help-line">从 <a href="https://siliconflow.cn" target="_blank">硅基流动官网</a> 获取API密钥</div>
+                                    <div class="sf-setting-row">
+                                        <label for="siliconflow_api_key">API密钥：</label>
+                                        <input id="siliconflow_api_key" type="password" placeholder="输入你的硅基流动API密钥" />
+                                    </div>
+
+                                    <div class="sf-setting-row">
+                                        <label for="siliconflow_api_url">API地址：</label>
+                                        <input id="siliconflow_api_url" type="text" value="https://api.siliconflow.cn/v1" />
+                                    </div>
+                                    <div class="setting-item button-group">
+                                        <button id="test_siliconflow_connection" class="menu_button">测试连接</button>
+                                        <span id="connection_status" style="color: red;">未连接</span>
+                                    </div>
+                                </section>
+
+                                <section class="sf-section">
+                                    <h4>语音设定</h4>
+
+                                    <div class="setting-item button-group sf-grid two sf-compact-grid">
+                                        <div class="setting-item">
+                                            <label for="tts_model">TTS模型</label>
+                                            <select id="tts_model">
+                                                <option value="FunAudioLLM/CosyVoice2-0.5B">CosyVoice2-0.5B</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="setting-item">
+                                            <label for="tts_voice">语音角色</label>
+                                            <select id="tts_voice">
+                                                <option value="alex">Alex (男声)</option>
+                                                <option value="anna">Anna (女声)</option>
+                                                <option value="bella">Bella (女声)</option>
+                                                <option value="benjamin">Benjamin (男声)</option>
+                                                <option value="charles">Charles (男声)</option>
+                                                <option value="claire">Claire (女声)</option>
+                                                <option value="david">David (男声)</option>
+                                                <option value="diana">Diana (女声)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-item button-group sf-grid two sf-compact-grid">
+                                        <div class="setting-item">
+                                            <label for="tts_speed">语速 <span id="tts_speed_value">1.0</span></label>
+                                            <input type="range" id="tts_speed" min="0.25" max="4" step="0.01" value="1" />
+                                        </div>
+
+                                        <div class="setting-item">
+                                            <label for="tts_gain">音量大小 <span id="tts_gain_value">0</span></label>
+                                            <input type="range" id="tts_gain" min="-10" max="10" step="1" value="0" />
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <section class="sf-section">
+                                    <details class="sf-collapse">
+                                      <summary style="font-size: 1.15em; font-weight: bold;">克隆音色</summary>
+                                      <div class="sf-collapse-body">
+                                            <div class="setting-item button-group">
+                                                <div class="setting-item">
+                                                    <label for="clone_voice_name">音色名称</label>
+                                                     <small>只能英文字母,数字,下划线,连字符,不超64字符</small>
+                                                     <input type="text" id="clone_voice_name" placeholder="例如: my_voice_1" pattern="[a-zA-Z0-9_\-]+" />
+                                                </div>
+                                            </div>
+
+                                            <div class="setting-item">
+                                                  <label for="clone_voice_text">参考文本</label>
+                                                  <textarea id="clone_voice_text" placeholder="输入音频对应的文本内容"></textarea>
+                                            </div>
+
+                                            <div class="setting-item">
+                                                <label>参考音频</label>
+                                                <div class="sf-file-import-row">
+                                                    <label for="clone_voice_audio" class="menu_button sf-file-import-button">导入参考音频</label>
+                                                    <input type="file" id="clone_voice_audio" accept="audio/*" />
+                                                    <span id="clone_voice_audio_name" class="sf-file-name">未选择音频</span>
+                                                </div>
+                                                <small>支持 mp3、wav 等音频格式，建议 5-10 秒清晰语音</small>
+                                            </div>
+
+                                            <div class="setting-item button-group">
+                                                <div class="setting-item">
+                                                     <label>已克隆的音色</label>
+                                                     <div id="custom_voices_list">
+                                                         <small>暂无自定义音色</small>
+                                                     </div>
+                                                </div>
+                                                <button id="upload_voice" class="menu_button">上传克隆音色</button>
+                                                <button id="refresh_custom_voices" class="menu_button">刷新音色列表</button>
+                                            </div>
+                                        </div>
+                                    </details>
+                                </section>
+                            </div>
+
+                            <!-- ---------- 火山引擎组 ---------- -->
+                            <div id="sf_engine_volcano" class="sf-engine-block" style="display: none;">
+                                <section class="sf-section">
+                                    <h4>火山引擎 · API设定</h4>
+                                    <div class="sf-help-line">从 <a href="https://console.volcengine.com/speech/overview" target="_blank">火山引擎语音控制台</a> 开通「大模型语音合成」后，获取 AppID 和 Access Key</div>
+                                    <div class="sf-setting-row">
+                                        <label for="volc_app_id">AppID：</label>
+                                        <input id="volc_app_id" type="password" placeholder="输入火山引擎 AppID" />
+                                    </div>
+                                    <div class="sf-setting-row">
+                                        <label for="volc_access_key">AccessKey：</label>
+                                        <input id="volc_access_key" type="password" placeholder="输入火山引擎 Access Key" />
+                                    </div>
+                                    <div class="setting-item button-group">
+                                        <button id="test_volcano_connection" class="menu_button">测试连接</button>
+                                        <span id="volc_connection_status" style="color: red;">未连接</span>
+                                    </div>
+                                </section>
+
+                                <section class="sf-section">
+                                    <h4>语音设定</h4>
+                                    <div class="setting-item">
+                                        <label for="volc_speaker">语音角色</label>
+                                        <select id="volc_speaker"></select>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="volc_custom_speaker">自定义音色ID</label>
+                                        <input type="text" id="volc_custom_speaker" placeholder="火山控制台「声音复刻」拿到的 ICL_xxx，填写后优先于上方音色" />
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="volc_speed">语速 <span id="volc_speed_value">1.0</span></label>
+                                        <input type="range" id="volc_speed" min="0.5" max="2" step="0.01" value="1" />
+                                    </div>
+                                    <small>
+                                        模型自动匹配：音色名带 uranus / saturn / moon 走 TTS 2.0；ICL_ 开头走声音复刻 2.0；其余走 TTS 1.0。<br>
+                                        火山请求经酒馆服务端中转（/proxy），需要较新版本的 SillyTavern。
+                                    </small>
+                                </section>
+                            </div>
+
+                            <!-- ---------- MiniMax 组 ---------- -->
+                            <div id="sf_engine_minimax" class="sf-engine-block" style="display: none;">
+                                <section class="sf-section">
+                                    <h4>MiniMax · API设定</h4>
+                                    <div class="sf-help-line">从 <a href="https://platform.minimaxi.com" target="_blank">MiniMax 开放平台</a> 获取 API Key 和 GroupID（账户管理 → 接口密钥；按字符计费，无需订阅）</div>
+                                    <div class="sf-setting-row">
+                                        <label for="minimax_api_key">API Key：</label>
+                                        <input id="minimax_api_key" type="password" placeholder="输入 MiniMax API Key" />
+                                    </div>
+                                    <div class="sf-setting-row">
+                                        <label for="minimax_group_id">GroupID：</label>
+                                        <input id="minimax_group_id" type="password" placeholder="输入 MiniMax GroupID" />
+                                    </div>
+                                    <div class="sf-setting-row">
+                                        <label for="minimax_api_host">API地址：</label>
+                                        <select id="minimax_api_host">
+                                            <option value="https://api.minimaxi.com">国内（api.minimaxi.com）</option>
+                                            <option value="https://api.minimax.io">国际（api.minimax.io）</option>
+                                            <option value="https://api.minimax.chat">旧版国内（api.minimax.chat）</option>
+                                        </select>
+                                    </div>
+                                    <div class="setting-item button-group">
+                                        <button id="test_minimax_connection" class="menu_button">测试连接</button>
+                                        <span id="minimax_connection_status" style="color: red;">未连接</span>
+                                    </div>
+                                </section>
+
+                                <section class="sf-section">
+                                    <h4>语音设定</h4>
+                                    <div class="setting-item button-group sf-grid two sf-compact-grid">
+                                        <div class="setting-item">
+                                            <label for="minimax_model">TTS模型</label>
+                                            <select id="minimax_model">
+                                                <option value="speech-2.6-hd">Speech-2.6-HD（新·高质量）</option>
+                                                <option value="speech-2.6-turbo">Speech-2.6-Turbo（新·快速）</option>
+                                                <option value="speech-02-hd" selected>Speech-02-HD（高质量）</option>
+                                                <option value="speech-02-turbo">Speech-02-Turbo（快速）</option>
+                                                <option value="speech-01-hd">Speech-01-HD（旧版）</option>
+                                                <option value="speech-01-turbo">Speech-01-Turbo（旧版）</option>
+                                            </select>
+                                        </div>
+                                        <div class="setting-item">
+                                            <label for="minimax_voice">语音角色</label>
+                                            <select id="minimax_voice"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="minimax_custom_voice">自定义音色ID</label>
+                                        <input type="text" id="minimax_custom_voice" placeholder="MiniMax 平台「声音复刻」拿到的音色ID，填写后优先于上方音色" />
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="minimax_speed">语速 <span id="minimax_speed_value">1.0</span></label>
+                                        <input type="range" id="minimax_speed" min="0.5" max="2" step="0.01" value="1" />
+                                    </div>
+                                    <small>
+                                        MiniMax 请求经酒馆服务端中转（/proxy），需要较新版本的 SillyTavern。
+                                    </small>
+                                </section>
+                            </div>
+
+                            <!-- ---------- 三引擎共用 ---------- -->
+                            <section class="sf-section">
+                                <h4>通用</h4>
+                                <div class="setting-item button-group sf-checkbox-inline-row">
+                                    <label class="sf-checkbox-item">
+                                        <input type="checkbox" id="auto_play_audio" checked /><span>自动朗读角色消息</span>
+                                    </label>
+                                    <label class="sf-checkbox-item">
+                                        <input type="checkbox" id="auto_play_user" /><span>自动朗读用户消息</span>
+                                    </label>
+                                </div>
+
+                                <details class="sf-collapse sf-role-voices-collapse">
+                                    <summary style="font-size: 1.05em; font-weight: bold;">多人角色音色</summary>
+                                    <div class="sf-collapse-body">
+                                        <div class="setting-item button-group sf-role-voice-tools">
+                                            <small>群聊里会按消息名字匹配音色；没设置的角色使用上面的默认语音角色。硅基 / 火山分开保存，互不影响。</small>
+                                            <button id="refresh_role_voices" class="menu_button" type="button">刷新当前聊天角色</button>
+                                        </div>
+                                        <div id="tts_role_voice_map" class="sf-role-voice-map">
+                                            <small>打开角色聊天页后点“刷新当前聊天角色”。</small>
+                                        </div>
+                                    </div>
+                                </details>
+
+                                <div class="sf-subsection">
+                                    <h4>TTS测试（当前引擎）</h4>
+                                    <div class="setting-item">
+                                        <textarea id="tts_test_text" placeholder="输入测试文本...">你好，这是一个测试语音。</textarea>
+                                        <button id="test_tts" class="menu_button sf-test-button">生成测试语音</button>
+                                        <div id="tts_output"></div>
+                                    </div>
+                                </div>
+
+                                <div class="setting-item button-group">
+                                    <button id="save_siliconflow_settings" class="menu_button">保存设置</button>
+                                </div>
+                            </section>
+                        </section>
+
+                        <!-- ==================== 文本截取面板 ==================== -->
+                        <section class="sf-pane" id="sf_pane_text" style="display: none;">
+                            <h4>文本截取设置</h4>
+                            <small>硅基 / 火山共用这一套截取规则。</small>
+                            <div class="sf-extra-text-rules">
+                                <label class="setting-item button-group sf-checkbox-row sf-extra-rules-toggle">
+                                    <input type="checkbox" id="tts_enable_extra_text_rules" />
+                                    <strong>使用标签块-额外提取正文</strong>
+                                </label>
+
+                                <div class="sf-extra-text-rules-body" style="display:none;">
+                                    <small>
+                                        处理顺序：先删掉 <code>X不想读</code>，再读取 <code>✓只读范围</code>；只读范围命中后就是硬边界，不再读取范围外正文。最后再按下面符号设置提取。
+                                    </small>
+
+                                    <div class="sf-tag-rule-block sf-tag-rule-skip">
+                                        <div class="setting-item button-group sf-tag-rule-head">
+                                            <span class="tts-tag-status tts-tag-skip">×</span>
+                                            <strong>X不想读</strong>
+                                            <button type="button" id="tts_add_skip_tag" class="menu_button">+</button>
+                                            <small>适合正文没有标签的，例如填思维链的 <code>&lt;think&gt;</code>，会先删掉 <code>&lt;think&gt;...&lt;/think&gt;</code>，里面内容不会再提取。</small>
+                                        </div>
+                                        <div id="tts_skip_tag_pairs" class="sf-tag-pair-list"></div>
+                                    </div>
+
+                                    <div class="sf-tag-rule-block sf-tag-rule-read">
+                                        <div class="setting-item button-group sf-tag-rule-head">
+                                            <span class="tts-tag-status tts-tag-read">✓</span>
+                                            <strong>只读范围</strong>
+                                            <button type="button" id="tts_add_read_tag" class="menu_button">+</button>
+                                            <small>霸王条款，全文只读这里，例如开始填 <code>&lt;content&gt;</code>，结束会自动同步为 <code>&lt;/content&gt;</code>。适合正文固定放在标签里的卡。</small>
+                                        </div>
+                                        <label class="setting-item button-group sf-checkbox-row sf-include-untagged-row">
+                                            <input type="checkbox" id="tts_read_untagged_with_required" />
+                                            <span>没找到相应标签，从全部正文中提取（条件：可先设定不提取范围）</span>
+                                        </label>
+                                        <div id="tts_read_tag_pairs" class="sf-tag-pair-list"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="sf-symbol-rules">
+                                <label class="setting-item button-group sf-checkbox-row">
+                                    <input type="checkbox" id="tts_read_symbol_inside" checked />
+                                    <strong>读此符里</strong>
+                                </label>
+                                <div class="setting-item button-group sf-grid two sf-compact-grid">
+                                    <div class="setting-item">
+                                        <label for="image_text_start">开始符号</label>
+                                        <input type="text" id="image_text_start" value="&quot;" />
+                                    </div>
+
+                                    <div class="setting-item">
+                                        <label for="image_text_end">结束符号</label>
+                                        <input type="text" id="image_text_end" value="&quot;" />
+                                    </div>
+                                </div>
+
+                                <label class="setting-item button-group sf-checkbox-row">
+                                    <input type="checkbox" id="tts_read_symbol_outside" checked />
+                                    <strong>不读此符内</strong>
+                                </label>
+                                <div class="setting-item button-group sf-grid two sf-compact-grid">
+                                    <div class="setting-item">
+                                        <label for="tts_symbol_outside_start">开始符号</label>
+                                        <input type="text" id="tts_symbol_outside_start" value="（ 【" />
+                                    </div>
+
+                                    <div class="setting-item">
+                                        <label for="tts_symbol_outside_end">结束符号</label>
+                                        <input type="text" id="tts_symbol_outside_end" value="） 】" />
+                                    </div>
+                                </div>
+                                <small id="tts_symbol_conflict_hint" class="sf-symbol-conflict-hint" style="display:none;">符号打架</small>
+                            </div>
+
+                            <div class="setting-item button-group sf-setting-row sf-limit-row">
+                                <label for="tts_max_read_chars">全文发送上限：</label>
+                                <input type="number" id="tts_max_read_chars" min="0" step="1" placeholder="默认1000；需要更长就填更大数字" />
+                            </div>
+                            <small>
+                                多组符号时用空格隔开，如：不读此符内开始填 <code>（ 【</code>，结束填 <code>） 】</code><br>
+                                默认会排除括号/方括号里的动作，再读取引号里的台词；如 <code>（懒洋洋起来）"早上好"</code> 会读 <code>早上好</code><br>
+                                同一组符号不能同时“读里”又“读外”；但没打架的符号仍会正常生效。<br>
+                                提取不到符号内容时，会自动改读整条消息，不会卡住。<br>
+                                全文发送上限默认是 <code>1000</code> 字；有需要可自主填写上限，例如 <code>4000</code>。留空或填 <code>0</code> 会按默认 <code>1000</code> 处理。
+                            </small>
+                        </section>
+
+                        <!-- ==================== 缓存面板 ==================== -->
+                        <section class="sf-pane" id="sf_pane_cache" style="display: none;">
+                            <h4>语音缓存</h4>
+                            <small>本次会话里生成过的语音。重听直接放缓存不扣费；可下载 mp3 或删除。刷新页面后缓存清空。</small>
+                            <div class="sf-cache-columns">
+                                <div class="sf-cache-col">
+                                    <div class="sf-cache-col-head">
+                                        <strong>硅基流动</strong>
+                                        <button type="button" class="menu_button sf-cache-clear" data-engine="siliconflow">清空</button>
+                                    </div>
+                                    <div id="sf_cache_list_siliconflow" class="sf-cache-list"><small>暂无缓存</small></div>
+                                </div>
+                                <div class="sf-cache-col">
+                                    <div class="sf-cache-col-head">
+                                        <strong>火山引擎</strong>
+                                        <button type="button" class="menu_button sf-cache-clear" data-engine="volcano">清空</button>
+                                    </div>
+                                    <div id="sf_cache_list_volcano" class="sf-cache-list"><small>暂无缓存</small></div>
+                                </div>
+                                <div class="sf-cache-col">
+                                    <div class="sf-cache-col-head">
+                                        <strong>MiniMax</strong>
+                                        <button type="button" class="menu_button sf-cache-clear" data-engine="minimax">清空</button>
+                                    </div>
+                                    <div id="sf_cache_list_minimax" class="sf-cache-list"><small>暂无缓存</small></div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- ==================== 日志面板 ==================== -->
+                        <section class="sf-pane" id="sf_pane_log" style="display: none;">
+                            <div class="sf-log-head">
+                                <h4>运行日志</h4>
+                                <button type="button" id="sf_log_clear" class="menu_button">清空日志</button>
+                            </div>
+                            <div id="sf_settings_log_body" class="sf-settings-log"><div>暂无日志。点消息上的 ▶ 后，每一步都会记录在这里。</div></div>
+                        </section>
+                    </div>
+                </div>
+
+                <input type="hidden" id="response_format" value="mp3" />
+                <input type="hidden" id="sample_rate" value="32000" />
+                <input type="hidden" id="image_size" value="512" />
+                <input type="hidden" id="generation_frequency" value="5" />
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* 1. 让API密钥和地址变成酒馆同款的紧凑对齐 */
+.sf-setting-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+    width: 100%;
+}
+
+/* 固定左边文字的宽度，并让文字右对齐，这样冒号就能完美对齐 */
+.sf-setting-row label {
+    width: 90px;          /* 如果觉得文字和框太近或太远，可以微调这个数字 */
+    text-align: right;    /* 文字靠右对齐 */
+    margin-bottom: 0 !important;
+    white-space: nowrap;
+    margin-right: 10px;   /* 文字和输入框之间的固定间距 */
+}
+
+/* 让输入框自动填满剩下的右侧空间，但保持紧凑 */
+.sf-setting-row input {
+    flex-grow: 1;
+}
+
+/* 2. 让测试连接和保存设置两个按钮平分并排（保持不变） */
+.sf-actions-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+.sf-actions-row .menu_button {
+    flex: 1;
+    margin: 0 !important;
+}
+
+/* 3. 让自动朗读的多选框左右并排（保持不变） */
+.sf-checkbox-inline-row {
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 20px;
+    margin: 15px 0;
+}
+.sf-checkbox-item {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+    cursor: pointer;
+    width: auto !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+}
+.sf-checkbox-item input[type="checkbox"] {
+    flex: 0 0 auto !important;
+    margin: 0 !important;
+}
+.sf-checkbox-item span {
+    display: inline !important;
+    line-height: 1.2 !important;
+}
+.siliconflow-extension-settings input[type="checkbox"] {
+    width: 14px !important;
+    height: 14px !important;
+    margin: 0 4px 0 0 !important;
+}
+.siliconflow-extension-settings .sf-checkbox-row,
+.siliconflow-extension-settings .tts-tag-enabled-label {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    margin: 4px 0 6px !important;
+}
+.siliconflow-extension-settings .tts-tag-pair-row {
+    align-items: center !important;
+    gap: 6px !important;
+}
+.siliconflow-extension-settings .sf-tag-rule-head {
+    align-items: center !important;
+    flex-wrap: wrap !important;
+}
+.siliconflow-extension-settings .sf-inline-mini-check {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    margin: 0 0 0 4px !important;
+    width: auto !important;
+    white-space: nowrap !important;
+}
+.siliconflow-extension-settings .sf-inline-mini-check input[type="checkbox"] {
+    flex: 0 0 auto !important;
+    margin: 0 !important;
+}
+.siliconflow-extension-settings .tts-tag-enabled-label {
+    flex: 0 0 auto !important;
+    min-width: auto !important;
+    white-space: nowrap !important;
+}
+.siliconflow-extension-settings input[type="text"],
+.siliconflow-extension-settings input[type="password"],
+.siliconflow-extension-settings input[type="number"],
+.siliconflow-extension-settings select,
+.siliconflow-extension-settings textarea {
+    background: rgba(18, 18, 18, 0.58) !important;
+    border: 1px solid rgba(255, 255, 255, 0.72) !important;
+    color: var(--SmartThemeBodyColor, #fff) !important;
+}
+.siliconflow-extension-settings .sf-role-voices-collapse {
+    margin: 8px 0 10px;
+}
+.siliconflow-extension-settings .sf-role-voice-tools {
+    align-items: center;
+    gap: 8px;
+}
+.siliconflow-extension-settings .sf-role-voice-tools small {
+    flex: 1 1 220px;
+}
+.siliconflow-extension-settings .sf-role-voice-row {
+    display: grid !important;
+    grid-template-columns: minmax(90px, 0.55fr) minmax(150px, 1fr);
+    gap: 8px;
+    align-items: center;
+    margin: 4px 0;
+}
+.siliconflow-extension-settings .sf-role-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 700;
+}
+.siliconflow-extension-settings .tts-role-voice-select {
+    width: 100%;
+}
+.siliconflow-extension-settings .sf-file-import-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.siliconflow-extension-settings .sf-file-import-row input[type="file"] {
+    position: absolute;
+    width: 1px !important;
+    height: 1px !important;
+    opacity: 0;
+    pointer-events: none;
+}
+.siliconflow-extension-settings .sf-file-import-button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center;
+    min-height: 30px;
+    margin: 0 !important;
+    cursor: pointer;
+}
+.siliconflow-extension-settings .sf-file-name {
+    color: var(--SmartThemeEmColor, rgba(255, 255, 255, 0.72));
+    font-size: 0.9em;
+    min-width: 100px;
+}
+.siliconflow-extension-settings .sf-symbol-conflict {
+    border-color: #ff4d4f !important;
+    box-shadow: 0 0 0 1px rgba(255, 77, 79, 0.9), 0 0 8px rgba(255, 77, 79, 0.45) !important;
+}
+.siliconflow-extension-settings .sf-symbol-conflict-hint {
+    color: #ff4d4f !important;
+    font-weight: 700;
+    margin: 2px 0 8px;
+}
+
+/* ==================== 侧栏布局 ==================== */
+.sf-layout {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+.sf-side-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+.sf-nav-item {
+    writing-mode: vertical-rl;
+    letter-spacing: 3px;
+    padding: 14px 7px;
+    min-width: 36px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--SmartThemeBodyColor, #fff);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1.2;
+    text-align: center;
+}
+.sf-nav-item:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+.sf-nav-item.sf-nav-active {
+    background: #2f6fdb;
+    border-color: #2f6fdb;
+    color: #fff;
+    font-weight: 700;
+}
+.sf-panes {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.sf-pane > h4:first-child {
+    margin-top: 0;
+}
+.sf-engine-block {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    padding: 4px 8px 8px;
+    margin: 8px 0;
+}
+
+/* ==================== 缓存面板 ==================== */
+.sf-cache-columns {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 8px;
+}
+@media (max-width: 900px) {
+    .sf-cache-columns {
+        grid-template-columns: 1fr;
+    }
+}
+.sf-cache-col-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.sf-cache-col-head .menu_button {
+    margin: 0 !important;
+    padding: 2px 10px;
+    font-size: 12px;
+}
+.sf-cache-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+.sf-cache-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+}
+.sf-cache-info {
+    min-width: 0;
+    overflow: hidden;
+}
+.sf-cache-text {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sf-cache-info small {
+    opacity: 0.7;
+}
+.sf-cache-actions {
+    display: flex;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+.sf-cache-actions .menu_button {
+    padding: 2px 8px;
+    margin: 0 !important;
+    font-size: 12px;
+}
+
+/* ==================== 日志面板 ==================== */
+.sf-log-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.sf-log-head .menu_button {
+    margin: 0 !important;
+    padding: 2px 10px;
+    font-size: 12px;
+}
+.sf-settings-log {
+    max-height: 380px;
+    min-height: 160px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.55);
+    color: #00ff7f;
+    font-family: monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    padding: 8px;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+</style>
