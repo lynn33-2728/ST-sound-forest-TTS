@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.0.1";
+const extensionVersion = "2.0.2";
 
 // 全局状态管理
 const audioState = {
@@ -657,6 +657,8 @@ const legacySettingKeys = [
   "声林语音2",
   "sillytavern-siliconflow-tts",
   "st-siliconflow-tts",
+  "ST-sound-forest-TTS",
+  "st-sound-forest-tts",
 ];
 
 async function loadSettings() {
@@ -913,6 +915,20 @@ function getVoiceForSpeaker(speakerName) {
   if (!speakerName || isTemplateSpeakerName(speakerName)) return fallback;
   const mapped = getRoleVoiceMap()[speakerName];
   return mapped || fallback;
+}
+
+// 保存三引擎 API 资料（按钮触发，带反馈）
+function saveApiSettings() {
+  const s = extension_settings[extensionName];
+  s.apiKey = String($("#siliconflow_api_key").val() || "").trim();
+  s.apiUrl = String($("#siliconflow_api_url").val() || "").trim() || defaultSettings.apiUrl;
+  s.volcAppId = String($("#volc_app_id").val() || "").trim();
+  s.volcAccessKey = String($("#volc_access_key").val() || "").trim();
+  s.minimaxApiKey = String($("#minimax_api_key").val() || "").trim();
+  s.minimaxGroupId = String($("#minimax_group_id").val() || "").trim();
+  saveSettingsDebounced();
+  toastr.success("API 设置已保存，刷新后自动恢复", "声林");
+  ttsLog("💾 API 设置已保存");
 }
 
 // 保存设置
@@ -3120,11 +3136,34 @@ jQuery(async () => {
     saveSettingsDebounced();
   });
   $("#test_siliconflow_connection").on("click", testConnection);
-  $("#tts_model").on("change", updateVoiceOptions);
+
+  // ===== 硅基设置自动保存（与火山/MiniMax 一致，输入即存） =====
+  $("#siliconflow_api_key, #siliconflow_api_url").on("input", function() {
+    extension_settings[extensionName].apiKey = String($("#siliconflow_api_key").val() || "").trim();
+    extension_settings[extensionName].apiUrl = String($("#siliconflow_api_url").val() || "").trim();
+    saveSettingsDebounced();
+  });
+  $("#tts_model").on("change", function() {
+    extension_settings[extensionName].ttsModel = $(this).val();
+    saveSettingsDebounced();
+    updateVoiceOptions();
+  });
   $("#tts_voice").on("change", function() {
     extension_settings[extensionName].ttsVoice = $(this).val();
+    saveSettingsDebounced();
     console.log("选择的音色:", $(this).val());
     renderRoleVoiceMap();
+  });
+  $("#response_format, #sample_rate, #image_size").on("change", function() {
+    extension_settings[extensionName].responseFormat = $("#response_format").val();
+    extension_settings[extensionName].sampleRate = parseInt($("#sample_rate").val(), 10);
+    extension_settings[extensionName].imageSize = $("#image_size").val();
+    saveSettingsDebounced();
+  });
+
+  // ===== 保存API设置按钮（三引擎通用） =====
+  $(document).on("click", ".sf-save-api-settings", function() {
+    saveApiSettings();
   });
   $("#refresh_role_voices").on("click", function() {
     renderRoleVoiceMap();
