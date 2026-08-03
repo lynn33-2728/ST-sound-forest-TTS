@@ -368,3 +368,139 @@
     font-size: 0.9em;
     min-width: 100px;
 }
+
+/* ===== 缓存面板：统计小字 + 折叠 + 紧凑行 ===== */
+.siliconflow-extension-settings .sf-cache-toggle {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.siliconflow-extension-settings .sf-cache-toggle:hover strong {
+    text-decoration: underline;
+}
+.siliconflow-extension-settings .sf-cache-arrow {
+    font-size: 11px;
+    opacity: 0.7;
+    width: 12px;
+    flex: 0 0 auto;
+}
+.siliconflow-extension-settings .sf-cache-stats {
+    font-size: 11px;
+    font-weight: normal;
+    opacity: 0.9;
+}
+.siliconflow-extension-settings .sf-cache-stats-siliconflow { color: #6fb7ff; }
+.siliconflow-extension-settings .sf-cache-stats-volcano { color: #ff9d6f; }
+.siliconflow-extension-settings .sf-cache-stats-minimax { color: #c79bff; }
+.siliconflow-extension-settings .sf-cache-toggle .sf-cache-clear {
+    margin-left: auto;
+    font-size: 11px;
+    padding: 2px 8px;
+}
+.siliconflow-extension-settings .sf-cache-list {
+    font-size: 12px;
+    line-height: 1.4;
+}
+.siliconflow-extension-settings .sf-cache-list .sf-cache-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 4px;
+    margin: 2px 0;
+    font-size: 12px;
+}
+.siliconflow-extension-settings .sf-cache-list .sf-cache-text {
+    font-size: 12px;
+}
+.siliconflow-extension-settings .sf-cache-list small {
+    font-size: 11px;
+    opacity: 0.75;
+}
+.siliconflow-extension-settings .sf-cache-list .sf-cache-actions .menu_button {
+    font-size: 11px;
+    padding: 2px 6px;
+    min-width: 0;
+}
+
+/* ===== 我的复刻音色（火山） ===== */
+.siliconflow-extension-settings .sf-clone-add-row {
+    display: flex;
+    gap: 6px;
+    margin: 6px 0;
+}
+.siliconflow-extension-settings .sf-clone-add-row input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12px;
+}
+.siliconflow-extension-settings .sf-clone-add-row .menu_button {
+    flex: 0 0 auto;
+    font-size: 12px;
+}
+.siliconflow-extension-settings .sf-clone-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 2px;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.siliconflow-extension-settings .sf-clone-name {
+    font-weight: bold;
+}
+.siliconflow-extension-settings .sf-clone-id {
+    opacity: 0.65;
+    font-size: 11px;
+    word-break: break-all;
+}
+.siliconflow-extension-settings .sf-clone-status {
+    font-size: 11px;
+    margin-left: auto;
+    white-space: nowrap;
+}
+.siliconflow-extension-settings .sf-clone-row .menu_button {
+    font-size: 11px;
+    padding: 2px 6px;
+    min-width: 0;
+    flex: 0 0 auto;
+}
+
+/* ===== 使用说明折叠块 ===== */
+.siliconflow-extension-settings .sf-guide {
+    margin-top: 8px;
+    font-size: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+.siliconflow-extension-settings .sf-guide summary {
+    cursor: pointer;
+    font-weight: bold;
+    user-select: none;
+}
+.siliconflow-extension-settings .sf-guide ol {
+    margin: 8px 0 4px;
+    padding-left: 18px;
+    line-height: 1.7;
+}
+.siliconflow-extension-settings .sf-guide img {
+    display: block;
+    max-width: 100%;
+    margin: 6px 0;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.siliconflow-extension-settings .sf-guide code {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+.siliconflow-extension-settings .sf-guide-credit {
+    display: block;
+    text-align: right;
+    opacity: 0.6;
+    font-size: 11px;
+}

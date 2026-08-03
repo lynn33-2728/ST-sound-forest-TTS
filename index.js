@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.0.2";
+const extensionVersion = "2.0.5";
 
 // 全局状态管理
 const audioState = {
@@ -108,7 +108,8 @@ const defaultSettings = {
   volcAppId: "",
   volcAccessKey: "",
   volcSpeaker: "zh_female_vv_uranus_bigtts",
-  volcCustomSpeaker: "", // 火山声音复刻的 ICL_xxx，填写后优先
+  volcCustomSpeaker: "", // 旧版单个自定义音色ID（已并入 volcClonedVoices，保留兼容）
+  volcClonedVoices: [], // 「我的复刻音色」列表：[{id, name}]
   volcSpeed: 1.0,
   roleVoiceMapVolc: {}, // 火山引擎单独的多人角色音色映射
   // ===== MiniMax 配置 =====
@@ -141,6 +142,54 @@ const TTS_MODELS = {
 
 // ============ 火山引擎 ============
 const VOLC_V3_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional";
+const VOLC_GET_VOICE_URL = "https://openspeech.bytedance.com/api/v3/tts/get_voice";
+
+// 向火山官方查询复刻音色的训练状态（status 2/4 = 可用于合成）
+async function verifyVolcCloneVoice(speakerId) {
+  const s = extension_settings[extensionName] || {};
+  const appId = String(s.volcAppId || "").trim();
+  const accessKey = String(s.volcAccessKey || "").trim();
+  if (!appId || !accessKey) {
+    throw new Error("请先在上方填写火山引擎的 AppID 和 Access Token");
+  }
+  const resp = await fetch("/proxy/" + encodeURIComponent(VOLC_GET_VOICE_URL), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-App-Id": appId,
+      "X-Api-Access-Key": accessKey,
+    },
+    body: JSON.stringify({ speaker_id: speakerId }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data.message ? `${data.message}（HTTP ${resp.status}）` : `HTTP ${resp.status}`);
+  }
+  const status = Number(data.status);
+  if (status === 2 || status === 4) return { ok: true, text: "✅ 可用" };
+  if (status === 1) return { ok: false, text: "⏳ 训练中" };
+  if (status === 3) return { ok: false, text: "❌ 训练失败" };
+  return { ok: false, text: "❓ 未找到该音色" };
+}
+
+// 渲染「我的复刻音色」列表
+function renderVolcCloneList() {
+  const box = $("#volc_clone_list");
+  if (!box.length) return;
+  const list = extension_settings[extensionName]?.volcClonedVoices || [];
+  if (!list.length) {
+    box.html("<small>还没有复刻音色。去火山官网「声音复刻」做好后，把音色ID填到上面。</small>");
+    return;
+  }
+  box.html(list.map((v, i) => `
+    <div class="sf-clone-row" data-idx="${i}">
+      <span class="sf-clone-name">${escapeHtml(v.name || v.id)}</span>
+      <small class="sf-clone-id">${escapeHtml(v.id)}</small>
+      <span class="sf-clone-status" id="sf_clone_status_${i}"></span>
+      <button type="button" class="menu_button sf-clone-verify" data-idx="${i}" title="向火山官方查询这个音色的训练状态">验证</button>
+      <button type="button" class="menu_button sf-clone-del" data-idx="${i}" title="从列表移除（不影响火山官网的音色）">✕</button>
+    </div>`).join(""));
+}
 
 // 火山引擎音色表（大模型语音合成，场景分组）
 const VOLC_VOICES = [
@@ -671,7 +720,12 @@ async function loadSettings() {
     const legacy = extension_settings[legacyKey];
     if (!legacy || typeof legacy !== "object") continue;
     for (const [key, value] of Object.entries(legacy)) {
-      if (extension_settings[extensionName][key] === undefined) {
+      const current = extension_settings[extensionName][key];
+      const hasDefault = Object.prototype.hasOwnProperty.call(defaultSettings, key);
+      const isUntouchedDefault = hasDefault && JSON.stringify(current) === JSON.stringify(defaultSettings[key]);
+      const legacyIsCustom = !hasDefault || JSON.stringify(value) !== JSON.stringify(defaultSettings[key]);
+      // 当前缺失，或当前还是默认值（没动过）而旧值是自定义的，都搬过来
+      if (current === undefined || (isUntouchedDefault && legacyIsCustom)) {
         extension_settings[extensionName][key] = value;
         migrated = true;
       }
@@ -736,10 +790,21 @@ async function loadSettings() {
   // 引擎与火山设置回显
   $("#volc_app_id").val(extension_settings[extensionName].volcAppId || "");
   $("#volc_access_key").val(extension_settings[extensionName].volcAccessKey || "");
-  $("#volc_custom_speaker").val(extension_settings[extensionName].volcCustomSpeaker || "");
   $("#volc_speed").val(extension_settings[extensionName].volcSpeed || defaultSettings.volcSpeed);
   $("#volc_speed_value").text(extension_settings[extensionName].volcSpeed || defaultSettings.volcSpeed);
+  // 旧版单个自定义音色ID → 自动收进「我的复刻音色」列表
+  const legacyVolcCustom = String(extension_settings[extensionName].volcCustomSpeaker || "").trim();
+  if (legacyVolcCustom) {
+    const list = Array.isArray(extension_settings[extensionName].volcClonedVoices)
+      ? extension_settings[extensionName].volcClonedVoices
+      : (extension_settings[extensionName].volcClonedVoices = []);
+    if (!list.some(v => v && v.id === legacyVolcCustom)) {
+      list.push({ id: legacyVolcCustom, name: legacyVolcCustom });
+      saveSettingsDebounced();
+    }
+  }
   buildVolcSpeakerOptions();
+  renderVolcCloneList();
   // MiniMax 设置回显
   $("#minimax_api_key").val(extension_settings[extensionName].minimaxApiKey || "");
   $("#minimax_group_id").val(extension_settings[extensionName].minimaxGroupId || "");
@@ -871,6 +936,9 @@ function getEngineVoiceOptions() {
     const options = VOLC_VOICES.map(v => ({ value: v.value, label: `${v.name}（${v.scene}）` }));
     const custom = String(extension_settings[extensionName]?.volcCustomSpeaker || "").trim();
     if (custom) options.unshift({ value: custom, label: `${custom}（自定义/复刻）` });
+    (extension_settings[extensionName]?.volcClonedVoices || []).forEach(v => {
+      if (v && v.id) options.unshift({ value: v.id, label: `${v.name || v.id}（我的复刻）` });
+    });
     return options;
   }
   if (engine === "minimax") {
@@ -961,7 +1029,6 @@ function saveSettings() {
   extension_settings[extensionName].volcAppId = String($("#volc_app_id").val() || "").trim();
   extension_settings[extensionName].volcAccessKey = String($("#volc_access_key").val() || "").trim();
   extension_settings[extensionName].volcSpeaker = $("#volc_speaker").val() || defaultSettings.volcSpeaker;
-  extension_settings[extensionName].volcCustomSpeaker = String($("#volc_custom_speaker").val() || "").trim();
   extension_settings[extensionName].volcSpeed = parseFloat($("#volc_speed").val()) || defaultSettings.volcSpeed;
   // MiniMax 设置
   extension_settings[extensionName].minimaxApiKey = String($("#minimax_api_key").val() || "").trim();
@@ -1156,6 +1223,7 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
       engine,
       text: text.slice(0, 60),
       voice: voiceValue,
+      size: audioBlob.size || 0,
       time: Date.now()
     });
     renderCachePanel();
@@ -1177,6 +1245,15 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
 }
 
 // ===== 缓存面板：硅基 / 火山 并列显示，可播放 / 下载 / 删除 =====
+// 缓存面板各引擎列的展开状态（默认收起）
+const cachePanelExpanded = { siliconflow: false, volcano: false, minimax: false };
+
+function formatCacheSize(bytes) {
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1) return mb.toFixed(1) + " MB";
+  return Math.max(1, Math.round(bytes / 1024)) + " KB";
+}
+
 function renderCachePanel() {
   const lists = {
     siliconflow: $("#sf_cache_list_siliconflow"),
@@ -1194,6 +1271,13 @@ function renderCachePanel() {
 
   Object.entries(lists).forEach(([engine, container]) => {
     const items = buckets[engine].sort((a, b) => b.entry.time - a.entry.time);
+    // 公司名旁边的小字统计：条数 + 占用
+    const totalBytes = items.reduce((sum, it) => sum + (Number(it.entry.size) || 0), 0);
+    const statsEl = $("#sf_cache_stats_" + engine);
+    statsEl.text(items.length ? `${items.length} 条 · ${formatCacheSize(totalBytes)}` : "暂无缓存");
+    // 保持展开/收起状态
+    container.toggle(cachePanelExpanded[engine] === true);
+    $("#sf_cache_arrow_" + engine).text(cachePanelExpanded[engine] ? "▾" : "▸");
     if (!items.length) {
       container.html("<small>暂无缓存</small>");
       return;
@@ -1202,10 +1286,11 @@ function renderCachePanel() {
       const time = new Date(entry.time).toLocaleTimeString();
       const fullText = String(entry.text || "");
       const snippet = escapeHtml(fullText.slice(0, 18)) + (fullText.length > 18 ? "…" : "");
+      const sizeText = entry.size ? " · " + formatCacheSize(entry.size) : "";
       return `<div class="sf-cache-row" data-key="${escapeHtml(key)}">
         <div class="sf-cache-info" title="${escapeHtml(fullText)}">
           <span class="sf-cache-text">${snippet}</span>
-          <small>${escapeHtml(entry.voice || "")} · ${time}</small>
+          <small>${escapeHtml(entry.voice || "")} · ${time}${sizeText}</small>
         </div>
         <div class="sf-cache-actions">
           <button type="button" class="menu_button sf-cache-play" title="播放（不扣费）">▶</button>
@@ -1233,6 +1318,13 @@ function buildVolcSpeakerOptions() {
     voices.forEach((v) => og.append($("<option>").attr("value", v.value).text(v.name)));
     select.append(og);
   });
+  // 「我的复刻音色」追加到下拉里
+  const clones = extension_settings[extensionName]?.volcClonedVoices || [];
+  if (clones.length) {
+    const og = $("<optgroup>").attr("label", "我的复刻音色");
+    clones.forEach((v) => og.append($("<option>").attr("value", v.id).text((v.name || v.id) + "（复刻）")));
+    select.append(og);
+  }
   select.val(current);
 }
 
@@ -3219,11 +3311,62 @@ jQuery(async () => {
   });
 
   // ===== 火山设置自动保存 =====
-  $("#volc_app_id, #volc_access_key, #volc_custom_speaker").on("input", function() {
+  $("#volc_app_id, #volc_access_key").on("input", function() {
     extension_settings[extensionName].volcAppId = String($("#volc_app_id").val() || "").trim();
     extension_settings[extensionName].volcAccessKey = String($("#volc_access_key").val() || "").trim();
-    extension_settings[extensionName].volcCustomSpeaker = String($("#volc_custom_speaker").val() || "").trim();
     saveSettingsDebounced();
+  });
+
+  // ===== 我的复刻音色（火山） =====
+  $("#volc_clone_add").on("click", function() {
+    const id = String($("#volc_clone_id").val() || "").trim();
+    const name = String($("#volc_clone_name").val() || "").trim() || id;
+    if (!id) {
+      toastr.error("请填写音色ID（S_xxx）", "复刻音色");
+      return;
+    }
+    const s = extension_settings[extensionName];
+    s.volcClonedVoices = Array.isArray(s.volcClonedVoices) ? s.volcClonedVoices : [];
+    if (s.volcClonedVoices.some(v => v && v.id === id)) {
+      toastr.warning("这个音色ID已经在列表里了", "复刻音色");
+      return;
+    }
+    s.volcClonedVoices.push({ id, name });
+    $("#volc_clone_id").val("");
+    $("#volc_clone_name").val("");
+    saveSettingsDebounced();
+    renderVolcCloneList();
+    buildVolcSpeakerOptions();
+    renderRoleVoiceMap();
+    ttsLog("🎤 已添加复刻音色：" + name + "（" + id + "）");
+  });
+  $(document).on("click", ".sf-clone-del", function() {
+    const idx = Number($(this).attr("data-idx"));
+    const list = extension_settings[extensionName]?.volcClonedVoices || [];
+    if (idx >= 0 && idx < list.length) {
+      const removed = list.splice(idx, 1)[0];
+      saveSettingsDebounced();
+      renderVolcCloneList();
+      buildVolcSpeakerOptions();
+      renderRoleVoiceMap();
+      ttsLog("🗑 已移除复刻音色：" + (removed?.name || removed?.id || ""));
+    }
+  });
+  $(document).on("click", ".sf-clone-verify", async function() {
+    const idx = Number($(this).attr("data-idx"));
+    const v = (extension_settings[extensionName]?.volcClonedVoices || [])[idx];
+    if (!v) return;
+    const statusEl = $("#sf_clone_status_" + idx);
+    statusEl.text("查询中…").css("color", "#ffd54a");
+    try {
+      const r = await verifyVolcCloneVoice(v.id);
+      statusEl.text(r.text).css("color", r.ok ? "#7bd88f" : "#ff8a80");
+      ttsLog("🔍 复刻音色 " + v.id + " 状态：" + r.text);
+    } catch (e) {
+      statusEl.text("查询失败").css("color", "#ff8a80");
+      toastr.error(e && e.message ? e.message : String(e), "复刻音色验证");
+      ttsLog("❌ 复刻音色验证失败：" + (e && e.message ? e.message : e));
+    }
   });
   $("#volc_speaker").on("change", function() {
     extension_settings[extensionName].volcSpeaker = $(this).val();
@@ -3335,6 +3478,14 @@ jQuery(async () => {
     renderCachePanel();
     const label = { siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax" }[engine] || engine;
     toastr.success(`已清空${label}缓存`, "缓存");
+  });
+  // 缓存列头点击展开/收起（点到「清空」按钮时不触发）
+  $(document).on("click", ".sf-cache-toggle", function(e) {
+    if ($(e.target).closest(".sf-cache-clear").length) return;
+    const engine = $(this).attr("data-engine");
+    if (!engine || !(engine in cachePanelExpanded)) return;
+    cachePanelExpanded[engine] = !cachePanelExpanded[engine];
+    renderCachePanel();
   });
 
   // ===== 日志面板清空 =====

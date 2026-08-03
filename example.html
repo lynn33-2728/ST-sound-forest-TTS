@@ -140,20 +140,33 @@
                             <div id="sf_engine_volcano" class="sf-engine-block" style="display: none;">
                                 <section class="sf-section">
                                     <h4>火山引擎 · API设定</h4>
-                                    <div class="sf-help-line">从 <a href="https://console.volcengine.com/speech/overview" target="_blank">火山引擎语音控制台</a> 开通「大模型语音合成」后，获取 AppID 和 Access Key</div>
+                                    <div class="sf-help-line">从 <a href="https://console.volcengine.com/speech/overview" target="_blank">火山引擎语音控制台</a> 开通「大模型语音合成」后，获取 AppID 和 Access Token</div>
                                     <div class="sf-setting-row">
                                         <label for="volc_app_id">AppID：</label>
-                                        <input id="volc_app_id" type="password" placeholder="输入火山引擎 AppID" />
+                                        <input id="volc_app_id" type="text" placeholder="输入火山引擎 AppID" />
                                     </div>
                                     <div class="sf-setting-row">
-                                        <label for="volc_access_key">AccessKey：</label>
-                                        <input id="volc_access_key" type="password" placeholder="输入火山引擎 Access Key" />
+                                        <label for="volc_access_key">Access Token：</label>
+                                        <input id="volc_access_key" type="password" placeholder="输入火山引擎 Access Token" />
                                     </div>
                                     <div class="setting-item button-group">
                                         <button id="test_volcano_connection" class="menu_button">测试连接</button>
                                         <button type="button" class="menu_button sf-save-api-settings">💾 保存API设置</button>
                                         <span id="volc_connection_status" style="color: red;">未连接</span>
                                     </div>
+                                    <details class="sf-guide">
+                                        <summary>📖 火山引擎使用说明（开通 → 拿Key → 复刻音色）</summary>
+                                        <ol>
+                                            <li><b>开启酒馆的 CORS 代理（必做）</b>：打开酒馆目录的 <code>config.yaml</code>，把 <code>enableCorsProxy</code> 改为 <code>true</code> 保存，然后<b>重启酒馆</b>（重启进程，不是 F5 刷新）。火山 / MiniMax 都靠它中转请求。</li>
+                                            <li><b>开通语音服务</b>：到 <a href="https://console.volcengine.com/speech/new/setting/activate" target="_blank">开通管理</a> 开通需要的项目（建议一次性开通）
+                                                <img src="guide-activate.png" alt="开通管理入口" /></li>
+                                            <li><b>获取 AppID 和 Access Token</b>：在 <a href="https://console.volcengine.com/speech/service/8" target="_blank">服务接口认证信息</a> 页面复制，填到上方两个框里
+                                                <img src="guide-token.png" alt="获取 AppID 和 Access Token" /></li>
+                                            <li><b>声音复刻（可选）</b>：到 <a href="https://console.volcengine.com/speech/new/experience/clone" target="_blank">声音复刻</a> 上传音频训练音色，完成后在「音色库」复制音色ID（S_xxx），回到下方「我的复刻音色」添加
+                                                <img src="guide-clone.png" alt="声音复刻入口" /></li>
+                                        </ol>
+                                        <small class="sf-guide-credit">参考说明来自「小白XTTS」</small>
+                                    </details>
                                 </section>
 
                                 <section class="sf-section">
@@ -163,8 +176,14 @@
                                         <select id="volc_speaker"></select>
                                     </div>
                                     <div class="setting-item">
-                                        <label for="volc_custom_speaker">自定义音色ID</label>
-                                        <input type="text" id="volc_custom_speaker" placeholder="火山控制台「声音复刻」拿到的 ICL_xxx，填写后优先于上方音色" />
+                                        <label>我的复刻音色</label>
+                                        <small>在火山官网「声音复刻」做好音色后，把音色ID（S_xxx）填进来，可添加多条；添加后会出现在上方「语音角色」下拉里</small>
+                                        <div class="sf-clone-add-row">
+                                            <input type="text" id="volc_clone_id" placeholder="音色ID，如 S_xxx" />
+                                            <input type="text" id="volc_clone_name" placeholder="名字（可选）" />
+                                            <button type="button" class="menu_button" id="volc_clone_add">＋添加</button>
+                                        </div>
+                                        <div id="volc_clone_list"><small>还没有复刻音色</small></div>
                                     </div>
                                     <div class="setting-item">
                                         <label for="volc_speed">语速 <span id="volc_speed_value">1.0</span></label>
@@ -188,7 +207,7 @@
                                     </div>
                                     <div class="sf-setting-row">
                                         <label for="minimax_group_id">GroupID：</label>
-                                        <input id="minimax_group_id" type="password" placeholder="输入 MiniMax GroupID" />
+                                        <input id="minimax_group_id" type="text" placeholder="输入 MiniMax GroupID" />
                                     </div>
                                     <div class="sf-setting-row">
                                         <label for="minimax_api_host">API地址：</label>
@@ -281,7 +300,6 @@
                         <!-- ==================== 文本截取面板 ==================== -->
                         <section class="sf-pane" id="sf_pane_text" style="display: none;">
                             <h4>文本截取设置</h4>
-                            <small>硅基 / 火山共用这一套截取规则。</small>
                             <div class="sf-extra-text-rules">
                                 <label class="setting-item button-group sf-checkbox-row sf-extra-rules-toggle">
                                     <input type="checkbox" id="tts_enable_extra_text_rules" />
@@ -373,25 +391,31 @@
                             <small>本次会话里生成过的语音。重听直接放缓存不扣费；可下载 mp3 或删除。刷新页面后缓存清空。</small>
                             <div class="sf-cache-columns">
                                 <div class="sf-cache-col">
-                                    <div class="sf-cache-col-head">
+                                    <div class="sf-cache-col-head sf-cache-toggle" data-engine="siliconflow" title="点击展开/收起缓存列表">
+                                        <span class="sf-cache-arrow" id="sf_cache_arrow_siliconflow">▸</span>
                                         <strong>硅基流动</strong>
+                                        <span class="sf-cache-stats sf-cache-stats-siliconflow" id="sf_cache_stats_siliconflow"></span>
                                         <button type="button" class="menu_button sf-cache-clear" data-engine="siliconflow">清空</button>
                                     </div>
-                                    <div id="sf_cache_list_siliconflow" class="sf-cache-list"><small>暂无缓存</small></div>
+                                    <div id="sf_cache_list_siliconflow" class="sf-cache-list" style="display: none;"><small>暂无缓存</small></div>
                                 </div>
                                 <div class="sf-cache-col">
-                                    <div class="sf-cache-col-head">
+                                    <div class="sf-cache-col-head sf-cache-toggle" data-engine="volcano" title="点击展开/收起缓存列表">
+                                        <span class="sf-cache-arrow" id="sf_cache_arrow_volcano">▸</span>
                                         <strong>火山引擎</strong>
+                                        <span class="sf-cache-stats sf-cache-stats-volcano" id="sf_cache_stats_volcano"></span>
                                         <button type="button" class="menu_button sf-cache-clear" data-engine="volcano">清空</button>
                                     </div>
-                                    <div id="sf_cache_list_volcano" class="sf-cache-list"><small>暂无缓存</small></div>
+                                    <div id="sf_cache_list_volcano" class="sf-cache-list" style="display: none;"><small>暂无缓存</small></div>
                                 </div>
                                 <div class="sf-cache-col">
-                                    <div class="sf-cache-col-head">
+                                    <div class="sf-cache-col-head sf-cache-toggle" data-engine="minimax" title="点击展开/收起缓存列表">
+                                        <span class="sf-cache-arrow" id="sf_cache_arrow_minimax">▸</span>
                                         <strong>MiniMax</strong>
+                                        <span class="sf-cache-stats sf-cache-stats-minimax" id="sf_cache_stats_minimax"></span>
                                         <button type="button" class="menu_button sf-cache-clear" data-engine="minimax">清空</button>
                                     </div>
-                                    <div id="sf_cache_list_minimax" class="sf-cache-list"><small>暂无缓存</small></div>
+                                    <div id="sf_cache_list_minimax" class="sf-cache-list" style="display: none;"><small>暂无缓存</small></div>
                                 </div>
                             </div>
                         </section>
