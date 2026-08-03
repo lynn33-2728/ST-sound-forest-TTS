@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.0.0";
+const extensionVersion = "2.0.1";
 
 // 全局状态管理
 const audioState = {
@@ -650,9 +650,36 @@ function updateExtraTextRulesUI(enabled = extension_settings[extensionName]?.ext
 }
 
 // 加载设置
+// 旧版扩展文件夹名（设置曾保存在这些 key 下），用于一次性迁移
+const legacySettingKeys = [
+  "硅基流动语音",
+  "硅基流动语音2",
+  "声林语音2",
+  "sillytavern-siliconflow-tts",
+  "st-siliconflow-tts",
+];
+
 async function loadSettings() {
   extension_settings[extensionName] = extension_settings[extensionName] || {};
-  
+
+  // 一次性迁移：把旧 key 下已有的字段拷到当前 key（只补缺，不覆盖）
+  let migrated = false;
+  for (const legacyKey of legacySettingKeys) {
+    if (legacyKey === extensionName) continue;
+    const legacy = extension_settings[legacyKey];
+    if (!legacy || typeof legacy !== "object") continue;
+    for (const [key, value] of Object.entries(legacy)) {
+      if (extension_settings[extensionName][key] === undefined) {
+        extension_settings[extensionName][key] = value;
+        migrated = true;
+      }
+    }
+  }
+  if (migrated) {
+    saveSettingsDebounced();
+    console.log(`[${extensionName}] 已从旧版扩展迁移设置`);
+  }
+
   if (Object.keys(extension_settings[extensionName]).length === 0) {
     Object.assign(extension_settings[extensionName], defaultSettings);
   }
