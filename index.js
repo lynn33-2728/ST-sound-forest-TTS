@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.0.8";
+const extensionVersion = "2.1.0";
 
 // 全局状态管理
 const audioState = {
@@ -118,7 +118,8 @@ const defaultSettings = {
   minimaxApiHost: "https://api.minimaxi.com",
   minimaxModel: "speech-02-hd",
   minimaxVoice: "female-shaonv",
-  minimaxCustomVoice: "", // MiniMax 声音复刻音色ID，填写后优先
+  minimaxCustomVoice: "", // 旧版单个自定义音色ID（已并入 minimaxClonedVoices，保留兼容）
+  minimaxClonedVoices: [], // MiniMax「我的克隆音色」列表：[{id, name}]
   minimaxSpeed: 1.0,
   roleVoiceMapMinimax: {} // MiniMax 单独的多人角色音色映射
 };
@@ -194,6 +195,71 @@ function renderVolcCloneList() {
       <span class="sf-clone-status" id="sf_clone_status_${i}"></span>
       <button type="button" class="menu_button sf-clone-verify" data-idx="${i}" title="向火山官方查询这个音色的训练状态">验证</button>
       <button type="button" class="menu_button sf-clone-del" data-idx="${i}" title="从列表移除（不影响火山官网的音色）">✕</button>
+    </div>`).join(""));
+}
+
+// ============ MiniMax 在线克隆（官方 files/upload + voice_clone 两步） ============
+function getMinimaxHost() {
+  return String(extension_settings[extensionName]?.minimaxApiHost || "https://api.minimaxi.com").replace(/\/+$/, "");
+}
+
+async function uploadMinimaxCloneFile(apiKey, file) {
+  const formData = new FormData();
+  formData.append("purpose", "voice_clone");
+  formData.append("file", file, file.name || "reference.mp3");
+  const resp = await fetch("/proxy/" + encodeURIComponent(`${getMinimaxHost()}/v1/files/upload`), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: formData,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(`文件上传失败：HTTP ${resp.status}`);
+  if (data.base_resp && data.base_resp.status_code !== 0) {
+    throw new Error(`上传报错 [${data.base_resp.status_code}]：${data.base_resp.status_msg}`);
+  }
+  const fileId = data.file?.file_id ?? data.file_id;
+  if (!fileId) throw new Error("上传成功但没有拿到文件ID");
+  return fileId;
+}
+
+async function cloneMinimaxVoice(apiKey, cfg) {
+  const body = {
+    file_id: Number(cfg.fileId),
+    voice_id: cfg.voiceId,
+    model: "speech-2.8-hd",
+    language_boost: "auto",
+    need_noise_reduction: cfg.noiseReduction === true,
+    need_volume_normalization: true,
+    aigc_watermark: false,
+  };
+  if (cfg.text) body.text = cfg.text;
+  const resp = await fetch("/proxy/" + encodeURIComponent(`${getMinimaxHost()}/v1/voice_clone`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(`克隆请求失败：HTTP ${resp.status}`);
+  if (data.base_resp && data.base_resp.status_code !== 0) {
+    throw new Error(`克隆报错 [${data.base_resp.status_code}]：${data.base_resp.status_msg}`);
+  }
+  return data; // 成功时 demo_audio 是可直接播放的地址/dataURL
+}
+
+// 渲染 MiniMax「我的克隆音色」列表
+function renderMinimaxCloneList() {
+  const box = $("#mm_clone_list");
+  if (!box.length) return;
+  const list = extension_settings[extensionName]?.minimaxClonedVoices || [];
+  if (!list.length) {
+    box.html("<small>还没有克隆音色。上传参考音频点「立即克隆」试试。</small>");
+    return;
+  }
+  box.html(list.map((v, i) => `
+    <div class="sf-clone-row" data-idx="${i}">
+      <span class="sf-clone-name">${escapeHtml(v.name || v.id)}</span>
+      <small class="sf-clone-id">${escapeHtml(v.id)}</small>
+      <button type="button" class="menu_button sf-mm-clone-del" data-idx="${i}" title="从列表移除（不影响 MiniMax 官网的音色）">✕</button>
     </div>`).join(""));
 }
 
@@ -819,7 +885,19 @@ async function loadSettings() {
   $("#minimax_custom_voice").val(extension_settings[extensionName].minimaxCustomVoice || "");
   $("#minimax_speed").val(extension_settings[extensionName].minimaxSpeed || defaultSettings.minimaxSpeed);
   $("#minimax_speed_value").text(extension_settings[extensionName].minimaxSpeed || defaultSettings.minimaxSpeed);
+  // 旧版单个自定义音色ID → 自动收进「我的克隆音色」列表
+  const legacyMmCustom = String(extension_settings[extensionName].minimaxCustomVoice || "").trim();
+  if (legacyMmCustom) {
+    const list = Array.isArray(extension_settings[extensionName].minimaxClonedVoices)
+      ? extension_settings[extensionName].minimaxClonedVoices
+      : (extension_settings[extensionName].minimaxClonedVoices = []);
+    if (!list.some(v => v && v.id === legacyMmCustom)) {
+      list.push({ id: legacyMmCustom, name: legacyMmCustom });
+      saveSettingsDebounced();
+    }
+  }
   buildMinimaxVoiceOptions();
+  renderMinimaxCloneList();
   updateEngineUI();
 
   updateVoiceOptions();
@@ -951,6 +1029,9 @@ function getEngineVoiceOptions() {
     const options = MINIMAX_VOICES.map(v => ({ value: v.value, label: `${v.name}（${v.scene}）` }));
     const custom = String(extension_settings[extensionName]?.minimaxCustomVoice || "").trim();
     if (custom) options.unshift({ value: custom, label: `${custom}（自定义/复刻）` });
+    (extension_settings[extensionName]?.minimaxClonedVoices || []).forEach(v => {
+      if (v && v.id) options.unshift({ value: v.id, label: `${v.name || v.id}（我的克隆）` });
+    });
     return options;
   }
   return getAllVoiceOptions();
@@ -1350,6 +1431,13 @@ function buildMinimaxVoiceOptions() {
     voices.forEach((v) => og.append($("<option>").attr("value", v.value).text(v.name)));
     select.append(og);
   });
+  // 「我的克隆音色」追加到下拉里
+  const clones = extension_settings[extensionName]?.minimaxClonedVoices || [];
+  if (clones.length) {
+    const og = $("<optgroup>").attr("label", "我的克隆音色");
+    clones.forEach((v) => og.append($("<option>").attr("value", v.id).text((v.name || v.id) + "（克隆）")));
+    select.append(og);
+  }
   select.val(current);
 }
 
@@ -3437,6 +3525,86 @@ jQuery(async () => {
     extension_settings[extensionName].minimaxGroupId = String($("#minimax_group_id").val() || "").trim();
     extension_settings[extensionName].minimaxCustomVoice = String($("#minimax_custom_voice").val() || "").trim();
     saveSettingsDebounced();
+  });
+
+  // ===== MiniMax 在线克隆 =====
+  $("#mm_clone_audio").on("change", function() {
+    const f = this.files && this.files[0];
+    $("#mm_clone_audio_name").text(f ? f.name : "未选择音频");
+  });
+  $("#mm_clone_start").on("click", async function() {
+    primeAudioOnce();
+    const statusEl = $("#mm_clone_status");
+    const setStatus = (text, color) => statusEl.text(text).css("color", color);
+    const apiKey = String(extension_settings[extensionName]?.minimaxApiKey || "").trim();
+    if (!apiKey) {
+      toastr.error("请先在上方填写 MiniMax API Key", "克隆音色");
+      return;
+    }
+    const audioInput = $("#mm_clone_audio")[0];
+    const audioFile = audioInput && audioInput.files ? audioInput.files[0] : null;
+    if (!audioFile || audioFile.size <= 0) {
+      toastr.error("请先导入一段参考音频（mp3 / wav / m4a）", "克隆音色");
+      return;
+    }
+    // 只接受音频文件（iOS 上 file.type 可能为空，用扩展名兜底）
+    const audioExts = ["mp3", "wav", "m4a", "aac", "ogg", "flac", "weba", "opus"];
+    const fileExt = String(audioFile.name || "").split(".").pop().toLowerCase();
+    const looksAudio = (audioFile.type && audioFile.type.startsWith("audio/")) || audioExts.includes(fileExt);
+    if (!looksAudio) {
+      toastr.error(`「${audioFile.name || "这个文件"}」不是音频文件，请导入 mp3 / wav / m4a 等音频。`, "克隆音色");
+      return;
+    }
+    const voiceId = String($("#mm_clone_id").val() || "").trim();
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(voiceId)) {
+      toastr.error("音色ID要 8 位以上，只能用字母、数字、-、_", "克隆音色");
+      return;
+    }
+    const demoText = String($("#mm_clone_text").val() || "").trim();
+    const noiseReduction = $("#mm_clone_nr").prop("checked") === true;
+
+    try {
+      setStatus("① 上传音频中…", "#ffd54a");
+      const fileId = await uploadMinimaxCloneFile(apiKey, audioFile);
+      setStatus("② 克隆训练中…", "#ffd54a");
+      const result = await cloneMinimaxVoice(apiKey, { fileId, voiceId, text: demoText, noiseReduction });
+
+      // 试听
+      if (result.demo_audio) {
+        $("#mm_clone_demo").attr("src", result.demo_audio).show();
+      }
+      // 收进「我的克隆音色」列表并进下拉框
+      const s = extension_settings[extensionName];
+      s.minimaxClonedVoices = Array.isArray(s.minimaxClonedVoices) ? s.minimaxClonedVoices : [];
+      if (!s.minimaxClonedVoices.some(v => v && v.id === voiceId)) {
+        s.minimaxClonedVoices.push({ id: voiceId, name: voiceId });
+      }
+      s.minimaxVoice = voiceId; // 直接选中新音色
+      saveSettingsDebounced();
+      renderMinimaxCloneList();
+      buildMinimaxVoiceOptions();
+      renderRoleVoiceMap();
+      setStatus("✅ 克隆成功，已选为新音色", "#7bd88f");
+      ttsLog("🎤 MiniMax 克隆成功：" + voiceId + "（7 天内记得用一次，不然官方会删）");
+      toastr.success(`音色 "${voiceId}" 克隆成功！7 天内要用一次，不然会被官方删除`, "克隆音色");
+    } catch (e) {
+      const msg = e && e.message ? e.message : String(e);
+      setStatus("❌ " + msg.slice(0, 24), "#ff8a80");
+      toastr.error(msg, "克隆音色失败");
+      ttsLog("❌ MiniMax 克隆失败：" + msg);
+    }
+  });
+  $(document).on("click", ".sf-mm-clone-del", function() {
+    const idx = Number($(this).attr("data-idx"));
+    const list = extension_settings[extensionName]?.minimaxClonedVoices || [];
+    if (idx >= 0 && idx < list.length) {
+      const removed = list.splice(idx, 1)[0];
+      saveSettingsDebounced();
+      renderMinimaxCloneList();
+      buildMinimaxVoiceOptions();
+      renderRoleVoiceMap();
+      ttsLog("🗑 已移除 MiniMax 克隆音色：" + (removed?.name || removed?.id || ""));
+    }
   });
   $("#minimax_api_host").on("change", function() {
     extension_settings[extensionName].minimaxApiHost = $(this).val();

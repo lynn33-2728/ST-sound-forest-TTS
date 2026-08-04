@@ -255,6 +255,38 @@
                                         MiniMax 请求经酒馆服务端中转（/proxy），需要较新版本的 SillyTavern。
                                     </small>
                                 </section>
+
+                                <section class="sf-section">
+                                    <h4>克隆音色</h4>
+                                    <small>上传一段清晰人声（建议 10 秒以上），MiniMax 在线复刻。⚠️ 克隆完 <b>7 天内要正式用一次</b>（随便合成一句），否则官方会自动删除音色。</small>
+                                    <div class="setting-item">
+                                        <label>参考音频</label>
+                                        <div class="sf-clone-add-row">
+                                            <label for="mm_clone_audio" class="menu_button sf-file-import-button">导入参考音频</label>
+                                            <input type="file" id="mm_clone_audio" accept=".mp3,.wav,.m4a,.aac,.ogg,.flac,audio/*" style="display: none;" />
+                                            <span id="mm_clone_audio_name" class="sf-file-name">未选择音频</span>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="mm_clone_id">音色ID</label>
+                                        <input type="text" id="mm_clone_id" placeholder="起个英文ID：8位以上，字母/数字/-/_" />
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="mm_clone_text">试听文本（可选）</label>
+                                        <input type="text" id="mm_clone_text" placeholder="克隆成功后，用新音色念这段话给你听" />
+                                    </div>
+                                    <div class="setting-item">
+                                        <label class="sf-checkbox-item"><input type="checkbox" id="mm_clone_nr" /><span> 开启降噪（参考音频有杂音时勾上）</span></label>
+                                    </div>
+                                    <div class="setting-item button-group">
+                                        <button type="button" class="menu_button" id="mm_clone_start">🎤 立即克隆</button>
+                                        <span id="mm_clone_status"></span>
+                                    </div>
+                                    <div class="setting-item">
+                                        <audio id="mm_clone_demo" controls style="width: 100%; height: 34px; display: none;"></audio>
+                                    </div>
+                                    <div id="mm_clone_list"><small>还没有克隆音色</small></div>
+                                </section>
                             </div>
 
                             <!-- ---------- 三引擎共用 ---------- -->
@@ -608,7 +640,7 @@
     margin: 2px 0 8px;
 }
 
-/* ==================== 侧栏布局（文字横排不旋转） ==================== */
+/* ==================== 侧栏布局（竖排文字） ==================== */
 .sf-layout {
     display: flex;
     gap: 12px;
@@ -621,17 +653,18 @@
     flex: 0 0 auto;
 }
 .sf-nav-item {
-    letter-spacing: 1px;
-    padding: 8px 10px;
+    writing-mode: vertical-rl;
+    letter-spacing: 3px;
+    padding: 14px 7px;
+    min-width: 36px;
     border: 1px solid rgba(255, 255, 255, 0.35);
     background: rgba(255, 255, 255, 0.06);
     color: var(--SmartThemeBodyColor, #fff);
     border-radius: 6px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.2;
     text-align: center;
-    white-space: nowrap;
 }
 .sf-nav-item:hover {
     background: rgba(255, 255, 255, 0.16);
