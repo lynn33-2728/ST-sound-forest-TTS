@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.1.0";
+const extensionVersion = "2.1.1";
 
 // 全局状态管理
 const audioState = {
@@ -199,26 +199,47 @@ function renderVolcCloneList() {
 }
 
 // ============ MiniMax 在线克隆（官方 files/upload + voice_clone 两步） ============
+// 注意：这两步【直连】MiniMax，不走酒馆 /proxy/ —— proxy 是为 JSON 设计的，
+// multipart 文件上传经过它会坏掉（HTTP 400）。MiniMax 官方接口允许跨域直连。
 function getMinimaxHost() {
   return String(extension_settings[extensionName]?.minimaxApiHost || "https://api.minimaxi.com").replace(/\/+$/, "");
 }
 
+function getMinimaxGroupQuery() {
+  const gid = String(extension_settings[extensionName]?.minimaxGroupId || "").trim();
+  return gid ? `?GroupId=${encodeURIComponent(gid)}` : "";
+}
+
+async function readMinimaxError(resp) {
+  // 尽量把 MiniMax 的原始报错读出来，方便看日志定位
+  const text = await resp.text().catch(() => "");
+  try {
+    const data = JSON.parse(text);
+    if (data.base_resp && data.base_resp.status_msg) {
+      return `[${data.base_resp.status_code}] ${data.base_resp.status_msg}`;
+    }
+  } catch (e) {}
+  return text ? `HTTP ${resp.status}：${text.slice(0, 150)}` : `HTTP ${resp.status}`;
+}
+
 async function uploadMinimaxCloneFile(apiKey, file) {
+  const url = `${getMinimaxHost()}/v1/files/upload${getMinimaxGroupQuery()}`;
   const formData = new FormData();
   formData.append("purpose", "voice_clone");
   formData.append("file", file, file.name || "reference.mp3");
-  const resp = await fetch("/proxy/" + encodeURIComponent(`${getMinimaxHost()}/v1/files/upload`), {
+  ttsLog("📤 MiniMax 上传参考音频：" + (file.name || "") + "（" + (file.size / 1024).toFixed(0) + " KB）");
+  const resp = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}` },
     body: formData,
   });
+  if (!resp.ok) throw new Error("文件上传失败：" + await readMinimaxError(resp));
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(`文件上传失败：HTTP ${resp.status}`);
   if (data.base_resp && data.base_resp.status_code !== 0) {
     throw new Error(`上传报错 [${data.base_resp.status_code}]：${data.base_resp.status_msg}`);
   }
   const fileId = data.file?.file_id ?? data.file_id;
-  if (!fileId) throw new Error("上传成功但没有拿到文件ID");
+  if (!fileId) throw new Error("上传成功但没有拿到文件ID，返回：" + JSON.stringify(data).slice(0, 120));
   return fileId;
 }
 
@@ -233,13 +254,13 @@ async function cloneMinimaxVoice(apiKey, cfg) {
     aigc_watermark: false,
   };
   if (cfg.text) body.text = cfg.text;
-  const resp = await fetch("/proxy/" + encodeURIComponent(`${getMinimaxHost()}/v1/voice_clone`), {
+  const resp = await fetch(`${getMinimaxHost()}/v1/voice_clone${getMinimaxGroupQuery()}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(body),
   });
+  if (!resp.ok) throw new Error("克隆请求失败：" + await readMinimaxError(resp));
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(`克隆请求失败：HTTP ${resp.status}`);
   if (data.base_resp && data.base_resp.status_code !== 0) {
     throw new Error(`克隆报错 [${data.base_resp.status_code}]：${data.base_resp.status_msg}`);
   }
@@ -3589,7 +3610,8 @@ jQuery(async () => {
       toastr.success(`音色 "${voiceId}" 克隆成功！7 天内要用一次，不然会被官方删除`, "克隆音色");
     } catch (e) {
       const msg = e && e.message ? e.message : String(e);
-      setStatus("❌ " + msg.slice(0, 24), "#ff8a80");
+      setStatus("❌ " + msg.slice(0, 40), "#ff8a80");
+      statusEl.attr("title", msg);
       toastr.error(msg, "克隆音色失败");
       ttsLog("❌ MiniMax 克隆失败：" + msg);
     }
