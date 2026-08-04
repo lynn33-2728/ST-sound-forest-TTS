@@ -608,31 +608,30 @@
     margin: 2px 0 8px;
 }
 
-/* ==================== 顶部标签布局 ==================== */
+/* ==================== 侧栏布局（文字横排不旋转） ==================== */
 .sf-layout {
     display: flex;
-    flex-direction: column;
     gap: 12px;
-    align-items: stretch;
+    align-items: flex-start;
 }
 .sf-side-nav {
     display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 8px;
     flex: 0 0 auto;
 }
 .sf-nav-item {
     letter-spacing: 1px;
-    padding: 8px 16px;
+    padding: 8px 10px;
     border: 1px solid rgba(255, 255, 255, 0.35);
     background: rgba(255, 255, 255, 0.06);
     color: var(--SmartThemeBodyColor, #fff);
     border-radius: 6px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     line-height: 1.2;
     text-align: center;
+    white-space: nowrap;
 }
 .sf-nav-item:hover {
     background: rgba(255, 255, 255, 0.16);

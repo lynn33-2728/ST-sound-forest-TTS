@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.0.7";
+const extensionVersion = "2.0.8";
 
 // 全局状态管理
 const audioState = {
@@ -1381,6 +1381,17 @@ function isLargePlayerBarMode() {
   return extension_settings[extensionName]?.playerBarSize === "large";
 }
 
+// 手机/平板判定：窄屏或触屏设备都算移动设备
+// （平板宽度常超过 720px，单看宽度会把平板误判成电脑，出来就是大进度条）
+function isSmallScreenOrTouch() {
+  if (window.innerWidth <= 1024) return true;
+  try {
+    return !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+  } catch (e) {
+    return false;
+  }
+}
+
 function updatePlayerBarSizeMenuText() {
   const item = document.getElementById("tts-player-size-toggle");
   if (item) item.textContent = isLargePlayerBarMode() ? "小进度条" : "大进度条";
@@ -1533,7 +1544,7 @@ function positionPlayerBarNearAnchor(bar, anchorElement) {
 function applyResponsivePlayerBarLayout(bar) {
   if (!bar) return;
 
-  const isMobileWidth = window.innerWidth <= 720;
+  const isMobileWidth = isSmallScreenOrTouch();
   const largeMobile = isMobileWidth && isLargePlayerBarMode();
   const compact = isMobileWidth && !largeMobile;
   const progress = document.getElementById("tts-player-progress");
@@ -1691,7 +1702,7 @@ function getTtsAudioEl() {
       "width:36px;height:34px;border:0;border-radius:17px;background:#fff;color:#000;" +
       "font-size:16px;line-height:34px;padding:0;cursor:pointer;flex:0 0 auto;";
     playBtn.addEventListener("pointerdown", (e) => {
-      if (window.innerWidth <= 720) startPlayerBarDrag(e, playBtn, true);
+      if (isSmallScreenOrTouch()) startPlayerBarDrag(e, playBtn, true);
     });
     playBtn.addEventListener("pointermove", movePlayerBarDrag);
     playBtn.addEventListener("pointerup", endDrag);
