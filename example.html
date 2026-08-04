@@ -9,7 +9,7 @@
             <div class="sf-settings">
                 <section class="sf-section sf-progress-note">
                     <small>
-                        • 版本：声林TTS语音插件 2.0.0（硅基流动 / 火山引擎 / MiniMax）by lynn琳<br>
+                        • 版本：声林 · 多平台语音 v<span id="sf_version_text"></span>（硅基流动 / 火山引擎 / MiniMax）by lynn琳<br>
                         • 按住左侧 🔊 拖动进度条位置，▶ 重听用缓存，不重复扣费。
                     </small>
                 </section>
@@ -115,7 +115,7 @@
                                                 <label>参考音频</label>
                                                 <div class="sf-file-import-row">
                                                     <label for="clone_voice_audio" class="menu_button sf-file-import-button">导入参考音频</label>
-                                                    <input type="file" id="clone_voice_audio" accept="audio/*" />
+                                                    <input type="file" id="clone_voice_audio" accept=".mp3,.wav,.m4a,.aac,.ogg,.flac,audio/*" />
                                                     <span id="clone_voice_audio_name" class="sf-file-name">未选择音频</span>
                                                 </div>
                                                 <small>支持 mp3、wav 等音频格式，建议 5-10 秒清晰语音</small>
@@ -608,23 +608,23 @@
     margin: 2px 0 8px;
 }
 
-/* ==================== 侧栏布局 ==================== */
+/* ==================== 顶部标签布局 ==================== */
 .sf-layout {
     display: flex;
+    flex-direction: column;
     gap: 12px;
-    align-items: flex-start;
+    align-items: stretch;
 }
 .sf-side-nav {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
     gap: 8px;
     flex: 0 0 auto;
 }
 .sf-nav-item {
-    writing-mode: vertical-rl;
-    letter-spacing: 3px;
-    padding: 14px 7px;
-    min-width: 36px;
+    letter-spacing: 1px;
+    padding: 8px 16px;
     border: 1px solid rgba(255, 255, 255, 0.35);
     background: rgba(255, 255, 255, 0.06);
     color: var(--SmartThemeBodyColor, #fff);

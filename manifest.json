@@ -1,12 +1,12 @@
 {
-  "display_name": "声林TTS语音插件",
+  "display_name": "声林 · 多平台语音（TTS）",
   "loading_order": 1,
   "requires": [],
   "optional": [],
   "js": "index.js",
   "css": "style.css",
   "author": "沐风的狗子 / lynn33-2728",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "homePage": "https://gitee.com/lynn/sound-forest-TTS"
 }
 

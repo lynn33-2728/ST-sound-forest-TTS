@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.0.6";
+const extensionVersion = "2.0.7";
 
 // 全局状态管理
 const audioState = {
@@ -2921,6 +2921,15 @@ async function uploadVoice() {
     toastr.error("参考音频文件是空的，请重新导入一段 mp3 或 wav。", "克隆音色错误");
     return;
   }
+
+  // 前置校验：只接受音频文件（iOS 上 file.type 可能为空，要用扩展名兜底）
+  const audioExts = ["mp3", "wav", "m4a", "aac", "ogg", "flac", "weba", "opus"];
+  const fileExt = String(audioFile.name || "").split(".").pop().toLowerCase();
+  const looksAudio = (audioFile.type && audioFile.type.startsWith("audio/")) || audioExts.includes(fileExt);
+  if (!looksAudio) {
+    toastr.error(`「${audioFile.name || "这个文件"}」不是音频文件。请导入 mp3 / wav / m4a 等音频，视频文件（如 mp4）硅基不收。`, "克隆音色错误");
+    return;
+  }
   
   try {
     console.log("开始上传音色...");
@@ -3112,6 +3121,9 @@ jQuery(async () => {
   $(".sf-guide img[data-guide]").each(function() {
     $(this).attr("src", `${extensionFolderPath}/${$(this).attr("data-guide")}`);
   });
+
+  // 版本号动态注入（以 index.js 的 extensionVersion 为准，HTML 不再写死）
+  $("#sf_version_text").text(extensionVersion);
   
   // Inline drawer 折叠/展开功能 - 使用延迟绑定
   setTimeout(() => {
