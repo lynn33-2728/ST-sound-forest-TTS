@@ -252,7 +252,7 @@
                                         <input type="range" id="minimax_speed" min="0.5" max="2" step="0.01" value="1" />
                                     </div>
                                     <small>
-                                        语音合成经酒馆服务端中转（/proxy）；如提示 CORS proxy is disabled，请在酒馆 config.yaml 开启 <code>enableCorsProxy: true</code> 后重启。克隆音色为 MiniMax 官方直连，需浏览器能访问 api.minimaxi.com。
+                                        语音合成经酒馆服务端中转（/proxy）；克隆音色为 MiniMax 官方直连，需浏览器能访问 api.minimaxi.com。
                                     </small>
                                 </section>
 
@@ -340,15 +340,28 @@
 
                                 <div class="sf-extra-text-rules-body" style="display:none;">
                                     <small>
-                                        处理顺序：先删掉 <code>X不想读</code>，再读取 <code>✓只读范围</code>；只读范围命中后就是硬边界，不再读取范围外正文。最后再按下面符号设置提取。
+                                        处理顺序：自动剔除 <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code>，再删掉 <code>X不想读</code>，再读取 <code>✓只读范围</code>；只读范围命中后就是硬边界，不再读取范围外正文。最后再按下面符号设置提取。
                                     </small>
+
+                                    <div class="sf-text-rule-help">
+                                        <strong>小白填法：</strong><br>
+                                        想读 <code>&lt;正文&gt;</code> 后面的内容：在 <code>✓只读范围</code> 点 <code>+</code>，开始填 <code>&lt;正文&gt;</code>，结束留空。<br>
+                                        想跳过 <code>&lt;思考&gt;</code> 后面的内容：在 <code>X不想读</code> 点 <code>+</code>，开始填 <code>&lt;思考&gt;</code>，结束留空。<br>
+                                        标准标签如 <code>&lt;think&gt;...&lt;/think&gt;</code>：开始填 <code>&lt;think&gt;</code>，结束填 <code>&lt;/think&gt;</code>。<br>
+                                        只填开始 = 到下一个标签或结尾；只填结束 = 从开头到这个标记。普通用户优先用“只填开始”。
+                                    </div>
+
+                                    <label class="setting-item button-group sf-checkbox-row">
+                                        <input type="checkbox" id="tts_skip_status_tag" checked />
+                                        <span>默认跳过 <code>&lt;状态栏&gt;...&lt;/状态栏&gt;</code> / <code>&lt;status&gt;...&lt;/status&gt;</code></span>
+                                    </label>
 
                                     <div class="sf-tag-rule-block sf-tag-rule-skip">
                                         <div class="setting-item button-group sf-tag-rule-head">
                                             <span class="tts-tag-status tts-tag-skip">×</span>
                                             <strong>X不想读</strong>
                                             <button type="button" id="tts_add_skip_tag" class="menu_button">+</button>
-                                            <small>适合正文没有标签的，例如填思维链的 <code>&lt;think&gt;</code>，会先删掉 <code>&lt;think&gt;...&lt;/think&gt;</code>，里面内容不会再提取。</small>
+                                            <small>结束框可留空。两边都填：删掉开始...结束；只填开始：删到下一个标签或结尾；只填结束：从开头删到结束。</small>
                                         </div>
                                         <div id="tts_skip_tag_pairs" class="sf-tag-pair-list"></div>
                                     </div>
@@ -358,7 +371,7 @@
                                             <span class="tts-tag-status tts-tag-read">✓</span>
                                             <strong>只读范围</strong>
                                             <button type="button" id="tts_add_read_tag" class="menu_button">+</button>
-                                            <small>霸王条款，全文只读这里，例如开始填 <code>&lt;content&gt;</code>，结束会自动同步为 <code>&lt;/content&gt;</code>。适合正文固定放在标签里的卡。</small>
+                                            <small>霸王条款，全文只读这里。结束框可留空；例如只填 <code>&lt;正文&gt;</code>，会读到下一个标签或结尾。</small>
                                         </div>
                                         <label class="setting-item button-group sf-checkbox-row sf-include-untagged-row">
                                             <input type="checkbox" id="tts_read_untagged_with_required" />

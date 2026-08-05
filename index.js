@@ -91,6 +91,7 @@ const defaultSettings = {
   symbolOutsideStart: "（ 【",
   symbolOutsideEnd: "） 】",
   extraTextRulesEnabled: false,
+  skipStatusTagEnabled: true,
   skipTagPairs: [],
   readTagPairs: [],
   readUntaggedWithRequired: false,
@@ -678,9 +679,6 @@ async function synthesizeMinimax(text, voiceId, speed) {
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "");
-    if (resp.status === 404 && /CORS proxy is disabled|enableCorsProxy|corsProxy/i.test(errText)) {
-      throw new Error("MiniMax HTTP 404：酒馆 CORS 代理未开启。打开 SillyTavern 的 config.yaml，把 enableCorsProxy 改为 true 后重启酒馆；或启动时加 --corsProxy。");
-    }
     throw new Error(`MiniMax HTTP ${resp.status}: ${String(errText).slice(0, 200)}`);
   }
 
@@ -714,7 +712,7 @@ function normalizeTagPairs(value) {
       end: String(pair?.end || "").trim(),
       enabled: pair?.enabled !== false,
     }))
-    .filter(pair => pair.start && pair.end);
+    .filter(pair => pair.start || pair.end);
 }
 
 function getTtsMaxReadChars() {
@@ -749,7 +747,7 @@ function collectTagPairSettings(kind) {
     const start = $(this).find(".tts-tag-start").val().trim();
     const end = $(this).find(".tts-tag-end").val().trim();
     const enabled = $(this).find(".tts-tag-enabled").prop("checked") !== false;
-    if (start || end) pairs.push({ start, end: end || makeEndTagFromStart(start), enabled });
+    if (start || end) pairs.push({ start, end, enabled });
   });
   return normalizeTagPairs(pairs);
 }
@@ -768,7 +766,7 @@ function addTagPairRow(kind, pair = {}) {
     </div>
   `);
   row.find(".tts-tag-start").val(pair.start || "");
-  row.find(".tts-tag-end").val(pair.end || makeEndTagFromStart(pair.start));
+  row.find(".tts-tag-end").val(pair.end || "");
   row.find(".tts-tag-enabled").prop("checked", pair.enabled !== false);
   row.attr("data-auto-end", makeEndTagFromStart(pair.start));
   container.append(row);
@@ -778,7 +776,11 @@ function addTagPairRow(kind, pair = {}) {
 function updateTagPairPreview(row) {
   const start = row.find(".tts-tag-start").val().trim();
   const end = row.find(".tts-tag-end").val().trim();
-  row.find(".tts-tag-preview").text(start && end ? `${start}  ${end}` : "");
+  let preview = "";
+  if (start && end) preview = `${start}  ${end}`;
+  else if (start) preview = `${start} → 下一段标签/结尾`;
+  else if (end) preview = `开头 → ${end}`;
+  row.find(".tts-tag-preview").text(preview);
 }
 
 function renderTagPairSettings(kind) {
@@ -877,6 +879,7 @@ async function loadSettings() {
   $("#auto_play_audio").prop("checked", extension_settings[extensionName].autoPlay !== false);
   $("#auto_play_user").prop("checked", extension_settings[extensionName].autoPlayUser === true);
   $("#tts_enable_extra_text_rules").prop("checked", extension_settings[extensionName].extraTextRulesEnabled === true);
+  $("#tts_skip_status_tag").prop("checked", extension_settings[extensionName].skipStatusTagEnabled !== false);
   $("#tts_read_untagged_with_required").prop("checked", extension_settings[extensionName].readUntaggedWithRequired === true);
   renderTagPairSettings("skip");
   renderTagPairSettings("read");
@@ -1129,6 +1132,7 @@ function saveSettings() {
   extension_settings[extensionName].symbolOutsideEnd = $("#tts_symbol_outside_end").val();
   extension_settings[extensionName].ttsMaxReadChars = getTtsMaxReadChars();
   extension_settings[extensionName].extraTextRulesEnabled = $("#tts_enable_extra_text_rules").prop("checked") === true;
+  extension_settings[extensionName].skipStatusTagEnabled = $("#tts_skip_status_tag").prop("checked") !== false;
   extension_settings[extensionName].skipTagPairs = collectTagPairSettings("skip");
   extension_settings[extensionName].readTagPairs = collectTagPairSettings("read");
   extension_settings[extensionName].readUntaggedWithRequired = $("#tts_read_untagged_with_required").prop("checked") === true;
@@ -2385,10 +2389,56 @@ function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function findTagBlocks(message, pairs) {
+function findNextRuleBoundary(message, fromIndex, boundaryPairs = []) {
+  const positions = [];
+  normalizeTagPairs(boundaryPairs).forEach(pair => {
+    [pair.start, pair.end].forEach(marker => {
+      if (!marker) return;
+      const index = message.indexOf(marker, fromIndex);
+      if (index !== -1 && index > fromIndex) positions.push(index);
+    });
+  });
+
+  const genericTagRe = /<\s*\/?\s*[\w\u4e00-\u9fa5:-]+(?:\s[^>]*)?>/g;
+  genericTagRe.lastIndex = fromIndex;
+  const genericMatch = genericTagRe.exec(message);
+  if (genericMatch && genericMatch.index > fromIndex) positions.push(genericMatch.index);
+
+  return positions.length ? Math.min(...positions) : message.length;
+}
+
+function findTagBlocks(message, pairs, boundaryPairs = pairs) {
   const blocks = [];
   getEnabledTagPairs(pairs).forEach(pair => {
     let cursor = 0;
+    if (!pair.start && pair.end) {
+      const endIndex = message.indexOf(pair.end, cursor);
+      if (endIndex !== -1) {
+        blocks.push({
+          start: 0,
+          end: endIndex + pair.end.length,
+          text: message.slice(0, endIndex).trim(),
+        });
+      }
+      return;
+    }
+
+    if (pair.start && !pair.end) {
+      while (pair.start) {
+        const startIndex = message.indexOf(pair.start, cursor);
+        if (startIndex === -1) break;
+        const contentStart = startIndex + pair.start.length;
+        const endIndex = findNextRuleBoundary(message, contentStart, boundaryPairs);
+        blocks.push({
+          start: startIndex,
+          end: endIndex,
+          text: message.slice(contentStart, endIndex).trim(),
+        });
+        cursor = endIndex > contentStart ? endIndex : contentStart;
+      }
+      return;
+    }
+
     let literalMatched = false;
     while (pair.start && pair.end) {
       const startIndex = message.indexOf(pair.start, cursor);
@@ -2444,22 +2494,39 @@ function textOutsideRanges(message, ranges) {
 
 function stripAllTagBlocks(message) {
   return String(message || "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
     .replace(/<([A-Za-z][\w:-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g, " ")
     .replace(/<[^>]+>/g, " ")
     .trim();
 }
 
+function stripUnsafeHtmlBlocks(message) {
+  return String(message || "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ");
+}
+
+function getDefaultSkipTagPairs() {
+  if (extension_settings[extensionName]?.skipStatusTagEnabled === false) return [];
+  return [
+    { start: "<状态栏>", end: "</状态栏>", enabled: true },
+    { start: "<status>", end: "</status>", enabled: true },
+  ];
+}
+
 function getAllConfiguredTagBlocks(message) {
   const allPairs = [
+    ...getDefaultSkipTagPairs(),
     ...(extension_settings[extensionName].skipTagPairs || []),
     ...(extension_settings[extensionName].readTagPairs || []),
-  ].filter(pair => pair?.start && pair?.end);
+  ].filter(pair => pair?.start || pair?.end);
   return findTagBlocks(message, allPairs);
 }
 
 function getConfiguredReadTagBlocks(message) {
   const readPairs = (extension_settings[extensionName].readTagPairs || [])
-    .filter(pair => pair?.start && pair?.end);
+    .filter(pair => pair?.start || pair?.end);
   return findTagBlocks(message, readPairs);
 }
 
@@ -2494,13 +2561,18 @@ function getMessageSourceText(messageElement) {
 }
 
 function prepareTextForTts(message) {
+  message = stripUnsafeHtmlBlocks(message);
   if (extension_settings[extensionName].extraTextRulesEnabled === true) {
-    const skipPairs = getEnabledTagPairs(extension_settings[extensionName].skipTagPairs);
+    const skipPairs = [
+      ...getDefaultSkipTagPairs(),
+      ...getEnabledTagPairs(extension_settings[extensionName].skipTagPairs),
+    ];
     const readPairs = getEnabledTagPairs(extension_settings[extensionName].readTagPairs);
     const includeUntagged = extension_settings[extensionName].readUntaggedWithRequired === true;
+    const allRulePairs = [...skipPairs, ...readPairs];
     let working = String(message || "");
 
-    const skipBlocks = findTagBlocks(working, skipPairs);
+    const skipBlocks = findTagBlocks(working, skipPairs, allRulePairs);
     if (skipBlocks.length > 0) {
       working = removeRanges(working, skipBlocks);
     }
@@ -2509,7 +2581,7 @@ function prepareTextForTts(message) {
 
     let readBlocks = [];
     if (readPairs.length > 0) {
-      readBlocks = findTagBlocks(working, readPairs);
+      readBlocks = findTagBlocks(working, readPairs, allRulePairs);
       ttsLog("🏷 只读范围：启用 " + readPairs.length + " 组，命中 " + readBlocks.length + " 段");
       for (const block of readBlocks) {
         const marked = extractMarkedText(block.text);
@@ -3335,6 +3407,10 @@ jQuery(async () => {
     const enabled = $(this).prop("checked") === true;
     extension_settings[extensionName].extraTextRulesEnabled = enabled;
     updateExtraTextRulesUI(enabled);
+    saveSettingsDebounced();
+  });
+  $("#tts_skip_status_tag").on("change", function() {
+    extension_settings[extensionName].skipStatusTagEnabled = $(this).prop("checked") !== false;
     saveSettingsDebounced();
   });
   $(document).on("input", ".tts-tag-start", function() {
