@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.1.1";
+const extensionVersion = "2.1.2";
 
 // 全局状态管理
 const audioState = {
@@ -678,6 +678,9 @@ async function synthesizeMinimax(text, voiceId, speed) {
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "");
+    if (resp.status === 404 && /CORS proxy is disabled|enableCorsProxy|corsProxy/i.test(errText)) {
+      throw new Error("MiniMax HTTP 404：酒馆 CORS 代理未开启。打开 SillyTavern 的 config.yaml，把 enableCorsProxy 改为 true 后重启酒馆；或启动时加 --corsProxy。");
+    }
     throw new Error(`MiniMax HTTP ${resp.status}: ${String(errText).slice(0, 200)}`);
   }
 
@@ -3773,4 +3776,3 @@ jQuery(async () => {
 });
 
 export { generateTTS };
-
