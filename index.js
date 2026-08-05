@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.1.2";
+const extensionVersion = "2.1.3";
 
 // 全局状态管理
 const audioState = {
@@ -223,23 +223,118 @@ async function readMinimaxError(resp) {
   return text ? `HTTP ${resp.status}：${text.slice(0, 150)}` : `HTTP ${resp.status}`;
 }
 
+const MINIMAX_AUDIO_MIME_BY_EXT = {
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  m4a: "audio/mp4",
+  mp4: "audio/mp4",
+  aac: "audio/aac",
+  ogg: "audio/ogg",
+  flac: "audio/flac",
+  weba: "audio/webm",
+  opus: "audio/ogg",
+};
+
+function getAudioFileExt(file) {
+  const name = String(file?.name || "");
+  const ext = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
+  return ext.replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeAudioMime(type, ext) {
+  const raw = String(type || "").toLowerCase().split(";")[0].trim();
+  if (raw === "audio/mp3") return "audio/mpeg";
+  if (raw === "audio/x-wav" || raw === "audio/wave") return "audio/wav";
+  if (raw === "audio/x-m4a" || raw === "audio/m4a") return "audio/mp4";
+  if (raw && raw.startsWith("audio/")) return raw;
+  return MINIMAX_AUDIO_MIME_BY_EXT[ext] || "";
+}
+
+function getMinimaxCloneMime(file) {
+  return normalizeAudioMime(file?.type, getAudioFileExt(file));
+}
+
+function looksLikeMinimaxAudio(file) {
+  const ext = getAudioFileExt(file);
+  return Boolean(getMinimaxCloneMime(file) || MINIMAX_AUDIO_MIME_BY_EXT[ext]);
+}
+
+function getMinimaxUploadName(file, mime) {
+  const originalName = String(file?.name || "").trim();
+  const ext = getAudioFileExt(file);
+  const safeBase = (originalName.replace(/\.[^.]+$/, "") || "reference_audio").replace(/[^\w.-]+/g, "_");
+  if (["mp3", "wav", "m4a"].includes(ext)) return originalName || `${safeBase}.${ext}`;
+  if (mime === "audio/mpeg") return `${safeBase}.mp3`;
+  if (mime === "audio/wav") return `${safeBase}.wav`;
+  if (mime === "audio/mp4" || ext === "mp4") return `${safeBase}.m4a`;
+  return originalName || `${safeBase}.mp3`;
+}
+
+function normalizeMinimaxCloneFile(file) {
+  const ext = getAudioFileExt(file);
+  const mime = getMinimaxCloneMime(file) || MINIMAX_AUDIO_MIME_BY_EXT[ext] || "audio/mpeg";
+  const name = getMinimaxUploadName(file, mime);
+  try {
+    return new File([file], name, { type: mime, lastModified: file.lastModified || Date.now() });
+  } catch (e) {
+    const blob = new Blob([file], { type: mime });
+    blob.name = name;
+    return blob;
+  }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("读取音频文件失败"));
+    reader.readAsDataURL(normalizeMinimaxCloneFile(file));
+  });
+}
+
+function parseMinimaxFileId(data) {
+  return data?.file?.file_id ?? data?.file_id ?? data?.id;
+}
+
 async function uploadMinimaxCloneFile(apiKey, file) {
   const url = `${getMinimaxHost()}/v1/files/upload${getMinimaxGroupQuery()}`;
   const formData = new FormData();
+  const uploadFile = normalizeMinimaxCloneFile(file);
+  const uploadName = uploadFile.name || file.name || "reference_audio.mp3";
   formData.append("purpose", "voice_clone");
-  formData.append("file", file, file.name || "reference.mp3");
-  ttsLog("📤 MiniMax 上传参考音频：" + (file.name || "") + "（" + (file.size / 1024).toFixed(0) + " KB）");
+  formData.append("file", uploadFile, uploadName);
+  ttsLog("📤 MiniMax 上传参考音频：" + uploadName + " / " + (uploadFile.type || "audio/*") + "（" + (file.size / 1024).toFixed(0) + " KB）");
   const resp = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}` },
     body: formData,
   });
-  if (!resp.ok) throw new Error("文件上传失败：" + await readMinimaxError(resp));
+  if (!resp.ok) {
+    const multipartError = await readMinimaxError(resp);
+    if (!/data:audio/i.test(multipartError)) {
+      throw new Error("文件上传失败：" + multipartError);
+    }
+    ttsLog("↪️ MiniMax 文件上传要求 data:audio，改用 base64 兜底上传");
+    const dataUrl = await readFileAsDataUrl(file);
+    const fallbackResp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ purpose: "voice_clone", audio: dataUrl, file: dataUrl, filename: uploadName }),
+    });
+    if (!fallbackResp.ok) throw new Error("文件上传失败：" + await readMinimaxError(fallbackResp));
+    const fallbackData = await fallbackResp.json().catch(() => ({}));
+    if (fallbackData.base_resp && fallbackData.base_resp.status_code !== 0) {
+      throw new Error(`上传报错 [${fallbackData.base_resp.status_code}]：${fallbackData.base_resp.status_msg}`);
+    }
+    const fallbackFileId = parseMinimaxFileId(fallbackData);
+    if (!fallbackFileId) throw new Error("base64 上传成功但没有拿到文件ID，返回：" + JSON.stringify(fallbackData).slice(0, 120));
+    return fallbackFileId;
+  }
   const data = await resp.json().catch(() => ({}));
   if (data.base_resp && data.base_resp.status_code !== 0) {
     throw new Error(`上传报错 [${data.base_resp.status_code}]：${data.base_resp.status_msg}`);
   }
-  const fileId = data.file?.file_id ?? data.file_id;
+  const fileId = parseMinimaxFileId(data);
   if (!fileId) throw new Error("上传成功但没有拿到文件ID，返回：" + JSON.stringify(data).slice(0, 120));
   return fileId;
 }
@@ -3648,16 +3743,13 @@ jQuery(async () => {
       return;
     }
     // 只接受音频文件（iOS 上 file.type 可能为空，用扩展名兜底）
-    const audioExts = ["mp3", "wav", "m4a", "aac", "ogg", "flac", "weba", "opus"];
-    const fileExt = String(audioFile.name || "").split(".").pop().toLowerCase();
-    const looksAudio = (audioFile.type && audioFile.type.startsWith("audio/")) || audioExts.includes(fileExt);
-    if (!looksAudio) {
-      toastr.error(`「${audioFile.name || "这个文件"}」不是音频文件，请导入 mp3 / wav / m4a 等音频。`, "克隆音色");
+    if (!looksLikeMinimaxAudio(audioFile)) {
+      toastr.error(`「${audioFile.name || "这个文件"}」不是音频文件，请导入 mp3 / wav / m4a 等音频。iOS 选到音频 mp4 时也会按 m4a 尝试。`, "克隆音色");
       return;
     }
     const voiceId = String($("#mm_clone_id").val() || "").trim();
-    if (!/^[A-Za-z0-9_-]{8,64}$/.test(voiceId)) {
-      toastr.error("音色ID要 8 位以上，只能用字母、数字、-、_", "克隆音色");
+    if (!/^[A-Za-z][A-Za-z0-9_-]{6,254}[A-Za-z0-9]$/.test(voiceId)) {
+      toastr.error("音色ID要 8 位以上，必须字母开头，结尾不能是 - 或 _，只能用字母、数字、-、_", "克隆音色");
       return;
     }
     const demoText = String($("#mm_clone_text").val() || "").trim();

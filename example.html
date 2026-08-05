@@ -263,7 +263,7 @@
                                         <label>参考音频</label>
                                         <div class="sf-clone-add-row">
                                             <label for="mm_clone_audio" class="menu_button sf-file-import-button">导入参考音频</label>
-                                            <input type="file" id="mm_clone_audio" accept=".mp3,.wav,.m4a,.aac,.ogg,.flac,audio/*" style="display: none;" />
+                                            <input type="file" id="mm_clone_audio" accept=".mp3,.wav,.m4a,.mp4,.aac,.ogg,.flac,audio/*" style="display: none;" />
                                             <span id="mm_clone_audio_name" class="sf-file-name">未选择音频</span>
                                         </div>
                                     </div>
@@ -345,8 +345,9 @@
 
                                     <div class="sf-text-rule-help">
                                         <strong>小白填法：</strong><br>
-                                        想读 <code>&lt;正文&gt;</code> 后面的内容：在 <code>✓只读范围</code> 点 <code>+</code>，开始填 <code>&lt;正文&gt;</code>，结束留空。<br>
-                                        想跳过 <code>&lt;思考&gt;</code> 后面的内容：在 <code>X不想读</code> 点 <code>+</code>，开始填 <code>&lt;思考&gt;</code>，结束留空。<br>
+                                        结束框若为空：从开始框一路处理到下一个标签或结尾。<br>
+                                        想读 <code>&lt;正文&gt;</code> 后面的内容：在 <code>✓只读范围</code> 点 <code>+</code>，开始填 <code>&lt;正文&gt;</code>，结束框留空。<br>
+                                        想跳过 <code>&lt;思考&gt;</code> 后面的内容：在 <code>X不想读</code> 点 <code>+</code>，开始填 <code>&lt;思考&gt;</code>，结束框留空。<br>
                                         标准标签如 <code>&lt;think&gt;...&lt;/think&gt;</code>：开始填 <code>&lt;think&gt;</code>，结束填 <code>&lt;/think&gt;</code>。<br>
                                         只填开始 = 到下一个标签或结尾；只填结束 = 从开头到这个标记。普通用户优先用“只填开始”。
                                     </div>
@@ -361,7 +362,7 @@
                                             <span class="tts-tag-status tts-tag-skip">×</span>
                                             <strong>X不想读</strong>
                                             <button type="button" id="tts_add_skip_tag" class="menu_button">+</button>
-                                            <small>结束框可留空。两边都填：删掉开始...结束；只填开始：删到下一个标签或结尾；只填结束：从开头删到结束。</small>
+                                            <small>结束框若为空：从开始框删到下一个标签或结尾。两边都填：删掉开始...结束；只填结束：从开头删到结束。</small>
                                         </div>
                                         <div id="tts_skip_tag_pairs" class="sf-tag-pair-list"></div>
                                     </div>
@@ -371,7 +372,7 @@
                                             <span class="tts-tag-status tts-tag-read">✓</span>
                                             <strong>只读范围</strong>
                                             <button type="button" id="tts_add_read_tag" class="menu_button">+</button>
-                                            <small>霸王条款，全文只读这里。结束框可留空；例如只填 <code>&lt;正文&gt;</code>，会读到下一个标签或结尾。</small>
+                                            <small>霸王条款，全文只读这里。结束框若为空：从开始框读到下一个标签或结尾；例如只填 <code>&lt;正文&gt;</code>。</small>
                                         </div>
                                         <label class="setting-item button-group sf-checkbox-row sf-include-untagged-row">
                                             <input type="checkbox" id="tts_read_untagged_with_required" />
