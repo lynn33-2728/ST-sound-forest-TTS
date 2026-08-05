@@ -21,28 +21,24 @@
 
 ## 安装
 
-### 方法一：GitHub 安装（主仓库）
+### 方法一：Gitee 下载（国内免登录，推荐）
 
-在酒馆扩展安装器里填写：
-
-```text
-https://github.com/lynn33-2728/ST-sound-forest-TTS
-```
-
-然后刷新 SillyTavern 页面，打开「扩展 → 声林 · 多引擎语音（TTS）」配置 API。
-
-### 方法二：Gitee 镜像下载（国内备用）
-
-Gitee 是从 GitHub 转过去的国内镜像。如果酒馆扩展安装器里直接填 Gitee 地址出现 `reject by [gitee]` 或 HTTP 400，说明 Gitee 拒绝了服务器侧 git clone，不是插件代码坏了。请下载 zip 手动安装：
+下载 zip：
 
 ```text
-https://gitee.com/lynn2728/sound-forest-TTS/repository/archive/master.zip
+https://gitee.com/lynn/sound-forest-TTS/repository/archive/master.zip
 ```
 
 解压后把文件夹重命名为 `ST-sound-forest-TTS`，放到：
 
 ```text
 SillyTavern/data/default-user/extensions/ST-sound-forest-TTS
+```
+
+### 方法二：GitHub
+
+```text
+https://github.com/lynn33-2728/sound-forest-TTS
 ```
 
 然后刷新 SillyTavern 页面，打开「扩展 → 声林 · 多引擎语音（TTS）」配置 API。
@@ -58,7 +54,6 @@ SillyTavern/data/default-user/extensions/ST-sound-forest-TTS
 说明：
 
 - 火山引擎和 MiniMax 的请求经酒馆服务端 `/proxy` 中转，请使用较新版本 SillyTavern。
-- MiniMax 如果报 `HTTP 404: CORS proxy is disabled`，不是 Key 错，而是酒馆没开 CORS 代理。打开 `config.yaml`，把 `enableCorsProxy` 改为 `true` 后重启酒馆；或启动时加 `--corsProxy`。
 - 声音复刻：硅基在插件里直接上传音频克隆；火山 / MiniMax 在各自平台控制台复刻后，把音色 ID 填进「自定义音色ID」即可。
 - MiniMax 语音按字符计费；若已订阅 Token Plan，请使用「订阅 Key」填入 API Key 栏。
 
