@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.1.3";
+const extensionVersion = "2.1.4";
 
 // 全局状态管理
 const audioState = {
@@ -203,12 +203,33 @@ function renderVolcCloneList() {
 // 注意：这两步【直连】MiniMax，不走酒馆 /proxy/ —— proxy 是为 JSON 设计的，
 // multipart 文件上传经过它会坏掉（HTTP 400）。MiniMax 官方接口允许跨域直连。
 function getMinimaxHost() {
-  return String(extension_settings[extensionName]?.minimaxApiHost || "https://api.minimaxi.com").replace(/\/+$/, "");
+  return normalizeMinimaxHost(extension_settings[extensionName]?.minimaxApiHost || "https://api.minimaxi.com");
 }
 
 function getMinimaxGroupQuery() {
   const gid = String(extension_settings[extensionName]?.minimaxGroupId || "").trim();
   return gid ? `?GroupId=${encodeURIComponent(gid)}` : "";
+}
+
+function normalizeMinimaxHost(host) {
+  const raw = String(host || "").trim().replace(/\/+$/, "");
+  if (!raw) return defaultSettings.minimaxApiHost;
+  // 旧域名不再出现在官方 T2A v2 文档里，容易对 /v1/t2a_v2 返回 404。
+  if (/^https?:\/\/api\.minimax\.chat$/i.test(raw)) return defaultSettings.minimaxApiHost;
+  return raw;
+}
+
+function syncMinimaxSettingsFromUi() {
+  const s = extension_settings[extensionName] || (extension_settings[extensionName] = {});
+  if ($("#minimax_api_key").length) s.minimaxApiKey = String($("#minimax_api_key").val() || "").trim();
+  if ($("#minimax_group_id").length) s.minimaxGroupId = String($("#minimax_group_id").val() || "").trim();
+  if ($("#minimax_api_host").length) s.minimaxApiHost = normalizeMinimaxHost($("#minimax_api_host").val());
+  else s.minimaxApiHost = normalizeMinimaxHost(s.minimaxApiHost);
+  if ($("#minimax_model").length) s.minimaxModel = $("#minimax_model").val() || defaultSettings.minimaxModel;
+  if ($("#minimax_voice").length) s.minimaxVoice = $("#minimax_voice").val() || defaultSettings.minimaxVoice;
+  if ($("#minimax_custom_voice").length) s.minimaxCustomVoice = String($("#minimax_custom_voice").val() || "").trim();
+  if ($("#minimax_speed").length) s.minimaxSpeed = parseFloat($("#minimax_speed").val()) || defaultSettings.minimaxSpeed;
+  return s;
 }
 
 async function readMinimaxError(resp) {
@@ -723,7 +744,7 @@ function getMinimaxVoice() {
 
 // MiniMax T2A v2 合成（经酒馆 /proxy 中转解决跨域），返回 mp3 Blob
 async function synthesizeMinimax(text, voiceId, speed) {
-  const s = extension_settings[extensionName] || {};
+  const s = syncMinimaxSettingsFromUi();
   const apiKey = String(s.minimaxApiKey || "").trim();
   const groupId = String(s.minimaxGroupId || "").trim();
   if (!apiKey || !groupId) {
@@ -737,7 +758,7 @@ async function synthesizeMinimax(text, voiceId, speed) {
   if (!Number.isFinite(spd)) spd = 1.0;
   spd = Math.min(2.0, Math.max(0.5, spd));
 
-  const host = String(s.minimaxApiHost || "https://api.minimaxi.com").replace(/\/+$/, "");
+  const host = normalizeMinimaxHost(s.minimaxApiHost || "https://api.minimaxi.com");
   const url = `${host}/v1/t2a_v2?GroupId=${encodeURIComponent(groupId)}`;
   const body = {
     model: s.minimaxModel || "speech-02-hd",
@@ -774,6 +795,9 @@ async function synthesizeMinimax(text, voiceId, speed) {
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "");
+    if (resp.status === 404) {
+      throw new Error(`MiniMax HTTP 404：接口地址不存在。请把 MiniMax 的 API地址切到「国内 api.minimaxi.com」或「国际 api.minimax.io」，不要用旧域名；当前请求：${url}`);
+    }
     throw new Error(`MiniMax HTTP ${resp.status}: ${String(errText).slice(0, 200)}`);
   }
 
@@ -937,6 +961,11 @@ async function loadSettings() {
       extension_settings[extensionName][key] = defaultSettings[key];
     }
   });
+  const normalizedMinimaxHost = normalizeMinimaxHost(extension_settings[extensionName].minimaxApiHost);
+  if (normalizedMinimaxHost !== extension_settings[extensionName].minimaxApiHost) {
+    extension_settings[extensionName].minimaxApiHost = normalizedMinimaxHost;
+    saveSettingsDebounced();
+  }
   if (extension_settings[extensionName].textStart === "（") {
     extension_settings[extensionName].textStart = defaultSettings.textStart;
   }
@@ -1002,7 +1031,7 @@ async function loadSettings() {
   // MiniMax 设置回显
   $("#minimax_api_key").val(extension_settings[extensionName].minimaxApiKey || "");
   $("#minimax_group_id").val(extension_settings[extensionName].minimaxGroupId || "");
-  $("#minimax_api_host").val(extension_settings[extensionName].minimaxApiHost || defaultSettings.minimaxApiHost);
+  $("#minimax_api_host").val(normalizeMinimaxHost(extension_settings[extensionName].minimaxApiHost || defaultSettings.minimaxApiHost));
   $("#minimax_model").val(extension_settings[extensionName].minimaxModel || defaultSettings.minimaxModel);
   $("#minimax_custom_voice").val(extension_settings[extensionName].minimaxCustomVoice || "");
   $("#minimax_speed").val(extension_settings[extensionName].minimaxSpeed || defaultSettings.minimaxSpeed);
@@ -1201,8 +1230,7 @@ function saveApiSettings() {
   s.apiUrl = String($("#siliconflow_api_url").val() || "").trim() || defaultSettings.apiUrl;
   s.volcAppId = String($("#volc_app_id").val() || "").trim();
   s.volcAccessKey = String($("#volc_access_key").val() || "").trim();
-  s.minimaxApiKey = String($("#minimax_api_key").val() || "").trim();
-  s.minimaxGroupId = String($("#minimax_group_id").val() || "").trim();
+  syncMinimaxSettingsFromUi();
   saveSettingsDebounced();
   toastr.success("API 设置已保存，刷新后自动恢复", "声林");
   ttsLog("💾 API 设置已保存");
@@ -1241,13 +1269,7 @@ function saveSettings() {
   extension_settings[extensionName].volcSpeaker = $("#volc_speaker").val() || defaultSettings.volcSpeaker;
   extension_settings[extensionName].volcSpeed = parseFloat($("#volc_speed").val()) || defaultSettings.volcSpeed;
   // MiniMax 设置
-  extension_settings[extensionName].minimaxApiKey = String($("#minimax_api_key").val() || "").trim();
-  extension_settings[extensionName].minimaxGroupId = String($("#minimax_group_id").val() || "").trim();
-  extension_settings[extensionName].minimaxApiHost = $("#minimax_api_host").val() || defaultSettings.minimaxApiHost;
-  extension_settings[extensionName].minimaxModel = $("#minimax_model").val() || defaultSettings.minimaxModel;
-  extension_settings[extensionName].minimaxVoice = $("#minimax_voice").val() || defaultSettings.minimaxVoice;
-  extension_settings[extensionName].minimaxCustomVoice = String($("#minimax_custom_voice").val() || "").trim();
-  extension_settings[extensionName].minimaxSpeed = parseFloat($("#minimax_speed").val()) || defaultSettings.minimaxSpeed;
+  syncMinimaxSettingsFromUi();
   
   saveSettingsDebounced();
   // 移除弹窗提示，改为控制台日志
@@ -3716,9 +3738,7 @@ jQuery(async () => {
 
   // ===== MiniMax 设置自动保存 =====
   $("#minimax_api_key, #minimax_group_id, #minimax_custom_voice").on("input", function() {
-    extension_settings[extensionName].minimaxApiKey = String($("#minimax_api_key").val() || "").trim();
-    extension_settings[extensionName].minimaxGroupId = String($("#minimax_group_id").val() || "").trim();
-    extension_settings[extensionName].minimaxCustomVoice = String($("#minimax_custom_voice").val() || "").trim();
+    syncMinimaxSettingsFromUi();
     saveSettingsDebounced();
   });
 
@@ -3729,6 +3749,7 @@ jQuery(async () => {
   });
   $("#mm_clone_start").on("click", async function() {
     primeAudioOnce();
+    syncMinimaxSettingsFromUi();
     const statusEl = $("#mm_clone_status");
     const setStatus = (text, color) => statusEl.text(text).css("color", color);
     const apiKey = String(extension_settings[extensionName]?.minimaxApiKey || "").trim();
@@ -3800,27 +3821,30 @@ jQuery(async () => {
     }
   });
   $("#minimax_api_host").on("change", function() {
-    extension_settings[extensionName].minimaxApiHost = $(this).val();
+    syncMinimaxSettingsFromUi();
+    $("#minimax_api_host").val(extension_settings[extensionName].minimaxApiHost || defaultSettings.minimaxApiHost);
     saveSettingsDebounced();
   });
   $("#minimax_model").on("change", function() {
-    extension_settings[extensionName].minimaxModel = $(this).val();
+    syncMinimaxSettingsFromUi();
     saveSettingsDebounced();
   });
   $("#minimax_voice").on("change", function() {
-    extension_settings[extensionName].minimaxVoice = $(this).val();
+    syncMinimaxSettingsFromUi();
     saveSettingsDebounced();
     renderRoleVoiceMap();
   });
   $("#minimax_speed").on("input", function() {
     $("#minimax_speed_value").text($(this).val());
-    extension_settings[extensionName].minimaxSpeed = parseFloat($(this).val()) || 1.0;
+    syncMinimaxSettingsFromUi();
     saveSettingsDebounced();
   });
 
   // MiniMax 测试连接：合成一句短文本并播放
   $("#test_minimax_connection").on("click", async function() {
     primeAudioOnce();
+    syncMinimaxSettingsFromUi();
+    saveSettingsDebounced();
     const status = $("#minimax_connection_status");
     status.text("测试中…").css("color", "#ffd54a");
     try {
