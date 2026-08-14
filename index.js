@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.1.4";
+const extensionVersion = "2.1.5";
 
 // 全局状态管理
 const audioState = {
@@ -14,7 +14,10 @@ const audioState = {
   lastProcessedMessageId: null,
   lastProcessedUserMessageId: null,
   processingTimeout: null,
-  audioQueue: []
+  audioQueue: [],
+  queueSessionId: 0,
+  queueGenerating: false,
+  queueWaiting: false,
 };
 
 // TTS 音频缓存：同一段文字只生成一次，之后“再听一次”直接放缓存，不再请求 API（不扣费）
@@ -72,6 +75,7 @@ function ttsLog(msg) {
 
 // 默认设置
 const DEFAULT_TTS_MAX_CHARS = 1000;
+const VOLCANO_MAX_TTS_UTF8_BYTES = 900;
 
 const defaultSettings = {
   apiKey: "",
@@ -601,6 +605,41 @@ function volcSpeedToSpeechRate(speed) {
   if (!Number.isFinite(s)) s = 1.0;
   s = Math.min(2.0, Math.max(0.5, s));
   return Math.round((s - 1) * 100);
+}
+
+function getUtf8ByteLength(text) {
+  return new TextEncoder().encode(String(text || "")).length;
+}
+
+function splitVolcanoText(text, maxBytes = VOLCANO_MAX_TTS_UTF8_BYTES) {
+  const chars = Array.from(String(text || ""));
+  const chunks = [];
+  let start = 0;
+
+  while (start < chars.length) {
+    let bytes = 0;
+    let end = start;
+    while (end < chars.length) {
+      const charBytes = getUtf8ByteLength(chars[end]);
+      if (bytes + charBytes > maxBytes) break;
+      bytes += charBytes;
+      end += 1;
+    }
+    if (end === start) end += 1;
+
+    let splitAt = end;
+    for (let i = end - 1; i >= start; i -= 1) {
+      if (/[。！？!?\n\r；;,.\uFF0C\u3001：:]/.test(chars[i])) {
+        splitAt = i + 1;
+        break;
+      }
+    }
+
+    const chunk = chars.slice(start, splitAt).join("").trim();
+    if (chunk) chunks.push(chunk);
+    start = splitAt;
+  }
+  return chunks;
 }
 
 // 火山引擎 V3 单向流式合成（经酒馆 /proxy 中转解决跨域），返回 mp3 Blob
@@ -1308,6 +1347,86 @@ async function testConnection() {
   }
 }
 
+function playNextQueuedAudio(sessionId) {
+  if (sessionId !== audioState.queueSessionId) return;
+  const nextUrl = audioState.audioQueue.shift();
+  if (nextUrl) {
+    audioState.queueWaiting = false;
+    playAudioUrl(nextUrl, null, () => playNextQueuedAudio(sessionId), sessionId);
+    return;
+  }
+  if (audioState.queueGenerating) {
+    audioState.queueWaiting = true;
+    if (audioState.playingButton) setButtonState(audioState.playingButton, "loading");
+    return;
+  }
+  resetPlayState();
+}
+
+function playCachedAudioSequence(urls, buttonElement = null) {
+  const validUrls = Array.isArray(urls) ? urls.filter(Boolean) : [];
+  if (!validUrls.length) return;
+  const sessionId = audioState.queueSessionId + 1;
+  audioState.queueSessionId = sessionId;
+  audioState.audioQueue = validUrls.slice(1);
+  audioState.queueGenerating = false;
+  audioState.queueWaiting = false;
+  playAudioUrl(validUrls[0], buttonElement, () => playNextQueuedAudio(sessionId), sessionId);
+}
+
+async function generateAndPlayVolcanoChunks(chunks, voiceValue, speed, cacheKey, fullText, buttonElement) {
+  const sessionId = audioState.queueSessionId + 1;
+  audioState.queueSessionId = sessionId;
+  audioState.audioQueue = [];
+  audioState.queueGenerating = true;
+  audioState.queueWaiting = false;
+
+  const urls = [];
+  let totalSize = 0;
+  for (let i = 0; i < chunks.length; i += 1) {
+    try {
+      ttsLog(`③ 火山引擎合成第 ${i + 1}/${chunks.length} 段… 音色=${voiceValue}`);
+      const blob = await synthesizeVolcano(chunks[i], voiceValue, speed);
+      if (sessionId !== audioState.queueSessionId) {
+        audioState.queueGenerating = false;
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      urls.push(url);
+      totalSize += blob.size || 0;
+      ttsLog(`④ 第 ${i + 1}/${chunks.length} 段合成完成`);
+
+      if (i === 0) {
+        playAudioUrl(url, buttonElement, () => playNextQueuedAudio(sessionId), sessionId);
+      } else {
+        audioState.audioQueue.push(url);
+        if (audioState.queueWaiting) playNextQueuedAudio(sessionId);
+      }
+    } catch (error) {
+      if (i === 0) throw error;
+      ttsLog(`⚠️ 火山第 ${i + 1}/${chunks.length} 段生成失败，已跳过：${error?.message || error}`);
+    }
+  }
+
+  if (sessionId !== audioState.queueSessionId) return;
+  audioState.queueGenerating = false;
+  if (audioState.queueWaiting) playNextQueuedAudio(sessionId);
+
+  if (!urls.length) throw new Error("火山引擎未生成可播放的音频");
+  ttsAudioCache.set(cacheKey, {
+    url: urls[0],
+    urls,
+    engine: "volcano",
+    text: fullText.slice(0, 60),
+    voice: voiceValue,
+    size: totalSize,
+    time: Date.now(),
+  });
+  renderCachePanel();
+  ttsLog(`⑤ 火山引擎共生成 ${urls.length}/${chunks.length} 段，已加入连续播放队列`);
+  return urls[0];
+}
+
 // TTS功能
 async function generateTTS(text, buttonElement = null, voiceOverride = null) {
   const engine = getEngine();
@@ -1364,7 +1483,8 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
   const cachedEntry = ttsAudioCache.get(cacheKey);
   if (cachedEntry) {
     ttsLog("② 命中缓存，直接播放（不扣费）");
-    playAudioUrl(cachedEntry.url, buttonElement);
+    if (Array.isArray(cachedEntry.urls)) playCachedAudioSequence(cachedEntry.urls, buttonElement);
+    else playAudioUrl(cachedEntry.url, buttonElement);
     return cachedEntry.url;
   }
 
@@ -1378,6 +1498,19 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
       text = text.substring(0, MAX_LEN);
       ttsLog(`✂ 文本超过全文发送上限，已按 ${MAX_LEN} 字截断`);
       toastr.info(`文本较长，已按全文发送上限 ${MAX_LEN} 字朗读`, "TTS");
+    }
+
+    if (engine === "volcano") {
+      const chunks = splitVolcanoText(text);
+      if (chunks.length > 1) {
+        ttsLog(`✂ 火山文本较长，已按安全长度拆分为 ${chunks.length} 段，将连续播放`);
+        toastr.info(`文本较长，已拆分为 ${chunks.length} 段连续播放`, "火山引擎");
+        const firstUrl = await generateAndPlayVolcanoChunks(chunks, voiceValue, speed, cacheKey, text, buttonElement);
+        if (!firstUrl) return;
+        const downloadLink = $(`<a href="${firstUrl}" download="tts_output_part_1.mp3">下载音频（第 1 段）</a>`);
+        $("#tts_output").empty().append(downloadLink);
+        return firstUrl;
+      }
     }
 
     let audioBlob;
@@ -2257,7 +2390,15 @@ function primeAudioOnce() {
 }
 
 // 实际播放一个音频URL：头像旁 ▶ 只负责播放，不主动弹出进度条；需要进度条时点消息旁的 +。
-function playAudioUrl(audioUrl, buttonElement) {
+function playAudioUrl(audioUrl, buttonElement, onFinished = null, queueSessionId = null) {
+  if (queueSessionId === null) {
+    audioState.queueSessionId += 1;
+    audioState.audioQueue = [];
+    audioState.queueGenerating = false;
+    audioState.queueWaiting = false;
+  } else if (queueSessionId !== audioState.queueSessionId) {
+    return;
+  }
   ttsLog("⑥ 尝试播放音频");
   const audio = getTtsAudioEl();
   try { audio.pause(); } catch (e) {}
@@ -2280,12 +2421,18 @@ function playAudioUrl(audioUrl, buttonElement) {
   };
   audio.onended = () => {
     console.log('音频播放完成');
-    resetPlayState();
+    if (typeof onFinished === "function") onFinished();
+    else resetPlayState();
   };
   audio.onerror = () => {
     ttsLog("❌ 音频元素报错（解码失败？）");
-    resetPlayState();
-    toastr.error('音频解码/播放失败，可能返回的不是有效音频。', 'TTS');
+    if (typeof onFinished === "function") {
+      ttsLog("⚠️ 当前分段播放失败，尝试继续下一段");
+      onFinished();
+    } else {
+      resetPlayState();
+      toastr.error('音频解码/播放失败，可能返回的不是有效音频。', 'TTS');
+    }
   };
 
   audio.src = audioUrl;
@@ -2305,6 +2452,10 @@ function playAudioUrl(audioUrl, buttonElement) {
 
 // 把所有按钮恢复到待机，并清空播放状态
 function resetPlayState() {
+  audioState.queueSessionId += 1;
+  audioState.audioQueue = [];
+  audioState.queueGenerating = false;
+  audioState.queueWaiting = false;
   audioState.isPlaying = false;
   audioState.currentAudio = null;
   $(".tts-manual-play-btn").removeClass("tts-loading tts-playing");

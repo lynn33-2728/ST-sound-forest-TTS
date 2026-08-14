@@ -420,14 +420,15 @@
 
                             <div class="setting-item button-group sf-setting-row sf-limit-row">
                                 <label for="tts_max_read_chars">全文发送上限：</label>
-                                <input type="number" id="tts_max_read_chars" min="0" step="1" placeholder="默认1000；需要更长就填更大数字" />
+                                <input type="number" id="tts_max_read_chars" min="0" step="1" placeholder="默认1000；可填写整条消息的朗读上限" />
                             </div>
                             <small>
                                 多组符号时用空格隔开，如：不读此符内开始填 <code>（ 【</code>，结束填 <code>） 】</code><br>
                                 默认会排除括号/方括号里的动作，再读取引号里的台词；如 <code>（懒洋洋起来）"早上好"</code> 会读 <code>早上好</code><br>
                                 同一组符号不能同时“读里”又“读外”；但没打架的符号仍会正常生效。<br>
                                 提取不到符号内容时，会自动改读整条消息，不会卡住。<br>
-                                全文发送上限默认是 <code>1000</code> 字；有需要可自主填写上限，例如 <code>4000</code>。留空或填 <code>0</code> 会按默认 <code>1000</code> 处理。
+                                全文发送上限是整条消息最多朗读多少字，默认 <code>1000</code>；有需要可填写更大数字，例如 <code>10000</code>。留空或填 <code>0</code> 会按默认 <code>1000</code> 处理。<br>
+                                使用火山引擎时，超过单段安全长度的文本会自动按句子拆分，并持续连续播放；日志会显示拆成了几段。
                             </small>
                         </section>
 
