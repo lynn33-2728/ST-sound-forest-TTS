@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.1.5";
+const extensionVersion = "2.1.6";
 
 // 全局状态管理
 const audioState = {
@@ -76,6 +76,8 @@ function ttsLog(msg) {
 // 默认设置
 const DEFAULT_TTS_MAX_CHARS = 1000;
 const VOLCANO_MAX_TTS_UTF8_BYTES = 900;
+const VOLCANO_REQUEST_TIMEOUT_MS = 90000;
+const VOLCANO_REQUEST_ATTEMPTS = 2;
 
 const defaultSettings = {
   apiKey: "",
@@ -670,34 +672,44 @@ async function synthesizeVolcano(text, speaker, speed) {
   };
   if (resourceId === "seed-tts-1.0") body.req_params.model = "seed-tts-1.1";
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45000);
-
   let resp;
-  try {
-    resp = await fetch("/proxy/" + encodeURIComponent(VOLC_V3_URL), {
-      method: "POST",
-      headers: {
-        ...(typeof getRequestHeaders === "function" ? getRequestHeaders() : {}),
-        "Content-Type": "application/json",
-        "X-Api-App-Id": appId,
-        "X-Api-Access-Key": accessKey,
-        "X-Api-Resource-Id": resourceId,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch (e) {
-    clearTimeout(timeoutId);
-    if (e.name === "AbortError") {
-      throw new Error("请求超时（45秒）。可能文本太长或网络问题，换短一点的内容试试。");
+  let lastError;
+  for (let attempt = 1; attempt <= VOLCANO_REQUEST_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), VOLCANO_REQUEST_TIMEOUT_MS);
+    try {
+      resp = await fetch("/proxy/" + encodeURIComponent(VOLC_V3_URL), {
+        method: "POST",
+        headers: {
+          ...(typeof getRequestHeaders === "function" ? getRequestHeaders() : {}),
+          "Content-Type": "application/json",
+          "X-Api-App-Id": appId,
+          "X-Api-Access-Key": accessKey,
+          "X-Api-Resource-Id": resourceId,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      break;
+    } catch (e) {
+      clearTimeout(timeoutId);
+      lastError = e;
+      if (attempt < VOLCANO_REQUEST_ATTEMPTS) {
+        ttsLog(`⚠️ 火山引擎第 ${attempt} 次请求超时/失败，自动重试一次…`);
+        continue;
+      }
     }
-    throw new Error("火山引擎请求失败：" + (e && e.message ? e.message : e) + "（需要酒馆服务端支持 /proxy 中转）");
+  }
+  if (!resp) {
+    if (lastError?.name === "AbortError") {
+      throw new Error("火山引擎单段请求超时（90 秒，已自动重试一次）。请稍后重试。");
+    }
+    throw new Error("火山引擎请求失败：" + (lastError && lastError.message ? lastError.message : lastError) + "（需要酒馆服务端支持 /proxy 中转）");
   }
 
   const logid = resp.headers.get("X-Tt-Logid") || "";
   if (!resp.ok) {
-    clearTimeout(timeoutId);
     const errText = await resp.text().catch(() => "");
     throw new Error(`火山引擎 HTTP ${resp.status}: ${String(errText).slice(0, 200)}${logid ? ` (logid: ${logid})` : ""}`);
   }
@@ -731,11 +743,9 @@ async function synthesizeVolcano(text, speaker, speed) {
     }
   } catch (e) {
     if (e.name === "AbortError") {
-      throw new Error("请求超时（45秒）。可能文本太长或网络问题，换短一点的内容试试。");
+      throw new Error("火山引擎读取音频超时（90 秒）。请稍后重试。");
     }
     throw e;
-  } finally {
-    clearTimeout(timeoutId);
   }
 
   if (audioChunks.length === 0) {
