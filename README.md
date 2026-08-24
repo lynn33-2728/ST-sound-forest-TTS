@@ -5,7 +5,7 @@
 - **硅基流动 SiliconFlow**：CosyVoice2，支持在线克隆音色
 - **火山引擎**：大模型语音合成，内置 100+ 音色（通用 / 角色扮演 / 方言 / 多语种），支持 `ICL_` 声音复刻
 - **MiniMax**：Speech-02 / 2.6 系列模型，支持声音复刻音色 ID
-- **MOSS**：MOSS-TTS，使用 `voice_id` 合成语音，支持在插件内上传参考音频创建音色
+- **MOSS**：MOSS-TTS，使用 `voice_id` 合成语音；音色克隆在 Mossland 官网完成
 
 本项目基于 [hjl2004-10/extension](https://github.com/hjl2004-10/extension) 修改演进，感谢原作者的项目基础。
 
@@ -56,9 +56,9 @@ https://github.com/lynn33-2728/sound-forest-TTS
 
 说明：
 
-- 火山引擎、MiniMax 和 MOSS 的请求经酒馆服务端 `/proxy` 中转，请使用较新版本 SillyTavern。
+- 火山引擎、MiniMax 和 MOSS 的语音合成请求经酒馆服务端 `/proxy` 中转，请使用较新版本 SillyTavern。
 - 声音复刻：硅基在插件里直接上传音频克隆；火山 / MiniMax 在各自平台控制台复刻后，把音色 ID 填进「自定义音色ID」即可。
-- MOSS 的 TTS 接口只接受 `voice_id`，不接受直接把参考音频塞进朗读请求；插件内克隆会先调用 MOSS 创建音色，拿到 `voice_id` 后自动选中。
+- MOSS 的 TTS 接口只接受 `voice_id`，不接受直接把参考音频塞进朗读请求；请到 [Mossland 音色设计](https://mossland.studio/voice/design) 完成克隆，在「我的」音色卡片点复制图标取得 `voice_id`，粘贴回插件即可。
 - MiniMax 语音按字符计费；若已订阅 Token Plan，请使用「订阅 Key」填入 API Key 栏。
 
 ## 出处与许可

@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.1.11";
+const extensionVersion = "2.2.1";
 
 // 全局状态管理
 const audioState = {
@@ -1002,6 +1002,13 @@ async function createMossVoice(apiKey, file, name, description = "") {
     return formData;
   };
 
+  const parseVoiceResponse = async (resp, source) => {
+    const data = await resp.json().catch(() => null);
+    const voiceId = String(data?.id || data?.voice_id || data?.data?.id || data?.data?.voice_id || "").trim();
+    if (!voiceId) throw new Error(source + "创建成功但没有返回 voice_id：" + JSON.stringify(data).slice(0, 180));
+    return { id: voiceId, name: String(data?.name || name || voiceId).trim() || voiceId };
+  };
+
   const url = normalizeMossHost(extension_settings[extensionName]?.mossApiHost) + "/v1/audio/voices";
   const request = async (targetUrl) => fetch(targetUrl, {
     method: "POST",
@@ -1013,14 +1020,36 @@ async function createMossVoice(apiKey, file, name, description = "") {
   });
 
   ttsLog("📤 MOSS 上传参考音频：" + (uploadFile.name || "reference_audio") + "（" + (uploadFile.size / 1024).toFixed(0) + " KB）");
+
+  // MOSS 不允许浏览器跨域直传，而酒馆内建 /proxy 会把 multipart 文件体转换成 JSON。
+  // 可选的本地 Server Plugin 保留文件流并只转发至 api.mosi.cn。
+  try {
+    const bridgeResp = await fetch("/api/plugins/sound-forest-moss-bridge/clone", {
+      method: "POST",
+      headers: {
+        ...(typeof getRequestHeaders === "function" ? getRequestHeaders() : {}),
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: buildFormData(),
+    });
+    if (bridgeResp.ok) {
+      ttsLog("✅ MOSS 克隆桥接服务已接收文件");
+      return parseVoiceResponse(bridgeResp, "MOSS 克隆桥接服务");
+    }
+    if (bridgeResp.status !== 404) {
+      throw new Error("MOSS 克隆桥接服务：" + await readMossError(bridgeResp));
+    }
+    ttsLog("ℹ️ 未安装 MOSS 克隆桥接服务，尝试旧兼容路径");
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    if (!/HTTP 404/.test(msg) && !/Failed to fetch/.test(msg)) throw e;
+  }
+
   const failures = [];
   try {
     const directResp = await request(url);
     if (directResp.ok) {
-      const data = await directResp.json().catch(() => null);
-      const voiceId = String(data?.id || data?.voice_id || data?.data?.id || data?.data?.voice_id || "").trim();
-      if (!voiceId) throw new Error("MOSS 直连创建成功但没有返回 voice_id：" + JSON.stringify(data).slice(0, 180));
-      return { id: voiceId, name: String(data?.name || name || voiceId).trim() || voiceId };
+      return parseVoiceResponse(directResp, "MOSS 直连");
     }
     failures.push("MOSS 直连：" + await readMossError(directResp));
   } catch (e) {
@@ -1030,16 +1059,13 @@ async function createMossVoice(apiKey, file, name, description = "") {
   try {
     const proxyResp = await request("/proxy/" + encodeURIComponent(url));
     if (proxyResp.ok) {
-      const data = await proxyResp.json().catch(() => null);
-      const voiceId = String(data?.id || data?.voice_id || data?.data?.id || data?.data?.voice_id || "").trim();
-      if (!voiceId) throw new Error("酒馆 /proxy 创建成功但没有返回 voice_id：" + JSON.stringify(data).slice(0, 180));
-      return { id: voiceId, name: String(data?.name || name || voiceId).trim() || voiceId };
+      return parseVoiceResponse(proxyResp, "酒馆 /proxy");
     }
     failures.push("酒馆 /proxy：" + await readMossError(proxyResp));
   } catch (e) {
     failures.push("酒馆 /proxy：" + (e && e.message ? e.message : e));
   }
-  throw new Error("MOSS 音色创建失败。" + failures.join("；") + "。若 /proxy 返回 HTML 400，说明当前酒馆代理未正确转发 multipart 文件上传。");
+  throw new Error("MOSS 音色创建失败。" + failures.join("；") + "。请安装「MOSS 克隆桥接服务」；酒馆内建 /proxy 无法转发 multipart 文件上传。");
 }
 
 function renderMossCloneList() {
