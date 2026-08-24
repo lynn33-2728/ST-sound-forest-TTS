@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.1.9";
+const extensionVersion = "2.1.10";
 
 // 全局状态管理
 const audioState = {
@@ -4397,7 +4397,7 @@ jQuery(async () => {
     }
   });
 
-  // MOSS 测试连接：合成一句短文本并播放
+  // MOSS 测试连接：只验证 API Key 与音色列表权限，首次配置不要求先选 voice_id。
   $("#test_moss_connection").on("click", async function() {
     primeAudioOnce();
     syncMossSettingsFromUi();
@@ -4405,10 +4405,10 @@ jQuery(async () => {
     const status = $("#moss_connection_status");
     status.text("测试中…").css("color", "#ffd54a");
     try {
-      const blob = await synthesizeMoss("你好，MOSS 连接成功。", getMossVoice());
-      playAudioUrl(URL.createObjectURL(blob));
+      const voices = await refreshMossVoices(false);
       status.text("已连接").css("color", "green");
-      ttsLog("✅ MOSS 连接成功");
+      ttsLog("✅ MOSS 连接成功，已读取音色 " + voices.length + " 个");
+      toastr.success(`API Key 有效，已读取 ${voices.length} 个音色；请再选择一个 voice_id。`, "MOSS 已连接");
     } catch (e) {
       status.text("未连接").css("color", "red");
       ttsLog("❌ MOSS 连接失败：" + (e && e.message ? e.message : e));
