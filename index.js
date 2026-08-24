@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.1.10";
+const extensionVersion = "2.1.11";
 
 // 全局状态管理
 const audioState = {
@@ -139,6 +139,26 @@ const defaultSettings = {
   mossResponseFormat: "mp3",
   roleVoiceMapMoss: {}
 };
+
+// MOSS 官方文档公开列出的试听音色。部分新账号的列表接口会暂时返回空数组，
+// 此时仍让用户能直接选择官方 voice_id 测试 TTS，不把“0 个”误解成没有音色。
+const MOSS_OFFICIAL_VOICES = [
+  { id: "c6c0a40a-ea82-4468-9a21-333d3c4a76f6", name: "曼波有口音版" },
+  { id: "f80b6698-0066-430b-88a0-f0fb8796db34", name: "明太祖" },
+  { id: "ddc6e38b-6f55-4415-b21b-a88cad2cc1d9", name: "VOX AKUMA" },
+  { id: "7662a8a1-700c-466a-b66b-57ece9e2e231", name: "李白" },
+  { id: "f9a1416b-d006-4b77-9581-8f0e8ec1e401", name: "旁白Jake" },
+  { id: "faf7f550-0627-4fc6-8db0-d3bfdad49358", name: "经验女教师" },
+  { id: "fe85a513-9bf3-4ef7-aa0b-8b2d11e4db93", name: "少年感人声（男）" },
+  { id: "0804710c-8e5e-4b67-acda-5785ef13c309", name: "历史解说男声" },
+  { id: "9d1e88e9-3b9c-4992-a414-7a1cb3ff7ab5", name: "优雅英国女士" },
+  { id: "806c9695-6160-404e-8722-4f788d935af3", name: "轻快灵动女声" },
+  { id: "2fdf194e-c16e-4587-9027-0d3464e09b4e", name: "诗词朗读" },
+  { id: "133bd03b-d717-4a55-8974-7ffc9afc1b51", name: "故宫纪录片" },
+  { id: "26838557-6890-4505-bc7c-e8198443a141", name: "东北虎哥" },
+  { id: "19411508-8731-4b68-901d-7e4b8a98e23f", name: "忧伤的秋" },
+  { id: "944eb93b-3820-49f3-b2c0-4e37a31d1161", name: "三农农业旁白" },
+];
 
 // TTS模型和音色配置
 const TTS_MODELS = {
@@ -952,18 +972,23 @@ async function fetchMossJson(path, options = {}) {
 async function refreshMossVoices(showToast = true) {
   const data = await fetchMossJson("/v1/audio/voices?limit=150&status=ready", { method: "GET" });
   const rawList = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.voices) ? data.voices : []);
-  const voices = rawList
+  const apiVoices = rawList
     .map((v) => ({
       id: String(v?.id || v?.voice_id || "").trim(),
       name: String(v?.name || v?.display_name || v?.voice_name || v?.id || v?.voice_id || "").trim(),
     }))
     .filter((v) => v.id);
+  const usedOfficialFallback = apiVoices.length === 0;
+  const voices = usedOfficialFallback ? MOSS_OFFICIAL_VOICES.slice() : apiVoices;
   extension_settings[extensionName].mossVoices = voices;
   saveSettingsDebounced();
   buildMossVoiceOptions();
   renderRoleVoiceMap();
-  if (showToast) toastr.success(`已刷新 MOSS 音色 ${voices.length} 个`, "MOSS");
-  ttsLog("🔊 MOSS 音色列表已刷新：" + voices.length + " 个");
+  if (showToast) {
+    const note = usedOfficialFallback ? "接口暂未返回账号音色，已载入官方示例音色" : "已读取账号可用音色";
+    toastr.success(`${note} ${voices.length} 个`, "MOSS");
+  }
+  ttsLog("🔊 MOSS 音色列表已刷新：" + voices.length + " 个" + (usedOfficialFallback ? "（官方示例兜底）" : ""));
   return voices;
 }
 
@@ -988,19 +1013,33 @@ async function createMossVoice(apiKey, file, name, description = "") {
   });
 
   ttsLog("📤 MOSS 上传参考音频：" + (uploadFile.name || "reference_audio") + "（" + (uploadFile.size / 1024).toFixed(0) + " KB）");
-  let resp;
+  const failures = [];
   try {
-    resp = await request(url);
+    const directResp = await request(url);
+    if (directResp.ok) {
+      const data = await directResp.json().catch(() => null);
+      const voiceId = String(data?.id || data?.voice_id || data?.data?.id || data?.data?.voice_id || "").trim();
+      if (!voiceId) throw new Error("MOSS 直连创建成功但没有返回 voice_id：" + JSON.stringify(data).slice(0, 180));
+      return { id: voiceId, name: String(data?.name || name || voiceId).trim() || voiceId };
+    }
+    failures.push("MOSS 直连：" + await readMossError(directResp));
   } catch (e) {
-    ttsLog("↪️ MOSS 直连上传失败，尝试酒馆 /proxy 中转：" + (e && e.message ? e.message : e));
-    resp = await request("/proxy/" + encodeURIComponent(url));
+    failures.push("MOSS 直连：" + (e && e.message ? e.message : e));
   }
-
-  if (!resp.ok) throw new Error("MOSS 音色创建失败：" + await readMossError(resp));
-  const data = await resp.json().catch(() => null);
-  const voiceId = String(data?.id || data?.voice_id || data?.data?.id || data?.data?.voice_id || "").trim();
-  if (!voiceId) throw new Error("MOSS 创建成功但没有返回 voice_id：" + JSON.stringify(data).slice(0, 180));
-  return { id: voiceId, name: String(data?.name || name || voiceId).trim() || voiceId };
+  ttsLog("↪️ MOSS 直连上传未成功，尝试酒馆 /proxy 中转");
+  try {
+    const proxyResp = await request("/proxy/" + encodeURIComponent(url));
+    if (proxyResp.ok) {
+      const data = await proxyResp.json().catch(() => null);
+      const voiceId = String(data?.id || data?.voice_id || data?.data?.id || data?.data?.voice_id || "").trim();
+      if (!voiceId) throw new Error("酒馆 /proxy 创建成功但没有返回 voice_id：" + JSON.stringify(data).slice(0, 180));
+      return { id: voiceId, name: String(data?.name || name || voiceId).trim() || voiceId };
+    }
+    failures.push("酒馆 /proxy：" + await readMossError(proxyResp));
+  } catch (e) {
+    failures.push("酒馆 /proxy：" + (e && e.message ? e.message : e));
+  }
+  throw new Error("MOSS 音色创建失败。" + failures.join("；") + "。若 /proxy 返回 HTML 400，说明当前酒馆代理未正确转发 multipart 文件上传。");
 }
 
 function renderMossCloneList() {

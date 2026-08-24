@@ -320,7 +320,7 @@
                                     <div class="setting-item">
                                         <label for="moss_voice_id">语音角色 / voice_id</label>
                                         <select id="moss_voice_id"></select>
-                                        <small>先点“刷新音色列表”；如果列表为空，可以直接在下面手动填一个 MOSS voice_id。</small>
+                                        <small>先点“刷新音色列表”；如果账号列表暂时为空，会自动显示 MOSS 官方示例音色，也可在下面手动填写 voice_id。</small>
                                         <input type="text" id="moss_voice_id_manual" placeholder="手动填写 voice_id，填写后优先使用" />
                                     </div>
                                     <div class="setting-item">
@@ -336,7 +336,7 @@
                                         </div>
                                     </div>
                                     <small>
-                                        MOSS 请求经酒馆服务端中转（/proxy）。TTS 只接受 voice_id；克隆音色会先创建 voice_id，再用于朗读。官方单人语音接口当前未公开语速字段，想调快慢请用悬浮进度条里的播放速度。
+                                        MOSS 请求经酒馆服务端中转（/proxy）。TTS 只接受 voice_id；克隆音色会先创建 voice_id，再用于朗读。克隆必须由酒馆代理正确转发文件上传；若提示“/proxy 返回 HTML 400”，请把完整错误发给作者排查酒馆服务端。官方单人语音接口当前未公开语速字段，想调快慢请用悬浮进度条里的播放速度。
                                     </small>
                                 </section>
                                 <section class="sf-section">
