@@ -9,7 +9,7 @@
             <div class="sf-settings">
                 <section class="sf-section sf-progress-note">
                     <small>
-                        • 版本：声林 · 多平台语音 v<span id="sf_version_text"></span>（硅基流动 / 火山引擎 / MiniMax）by lynn琳<br>
+                        • 版本：声林 · 多平台语音 v<span id="sf_version_text"></span>（硅基流动 / 火山引擎 / MiniMax / MOSS）by lynn琳<br>
                         • 按住左侧 🔊 拖动进度条位置，▶ 重听用缓存，不重复扣费。
                     </small>
                 </section>
@@ -31,6 +31,7 @@
                                     <option value="siliconflow">硅基流动</option>
                                     <option value="volcano">火山引擎</option>
                                     <option value="minimax">MiniMax</option>
+                                    <option value="moss">MOSS</option>
                                 </select>
                             </div>
 
@@ -81,7 +82,7 @@
                                         </div>
                                     </div>
 
-                                    <div class="setting-item button-group sf-grid two sf-compact-grid sf-voice-slider-grid">
+                                    <div class="setting-item button-group sf-grid sf-compact-grid sf-voice-slider-grid">
                                         <div class="setting-item">
                                             <label for="tts_speed">语速 <span id="tts_speed_value">1.0</span></label>
                                             <input type="range" id="tts_speed" min="0.25" max="4" step="0.01" value="1" />
@@ -290,6 +291,83 @@
                                 </section>
                             </div>
 
+                            <!-- ---------- MOSS 组 ---------- -->
+                            <div id="sf_engine_moss" class="sf-engine-block" style="display: none;">
+                                <section class="sf-section">
+                                    <h4>MOSS · API设定</h4>
+                                    <div class="sf-help-line">从 <a href="https://platform.mosi.cn/docs/getting-started/auth/" target="_blank">Moss API 平台</a> 获取 API Key；语音合成使用 <code>/v1/audio/speech</code>。</div>
+                                    <div class="sf-setting-row">
+                                        <label for="moss_api_key">API Key：</label>
+                                        <input id="moss_api_key" type="password" placeholder="输入 MOSS API Key" />
+                                    </div>
+                                    <div class="sf-setting-row">
+                                        <label for="moss_api_host">API地址：</label>
+                                        <input id="moss_api_host" type="text" value="https://api.mosi.cn" />
+                                    </div>
+                                    <div class="setting-item button-group">
+                                        <button id="test_moss_connection" class="menu_button">测试连接</button>
+                                        <button type="button" class="menu_button sf-save-api-settings">💾 保存API设置</button>
+                                        <span id="moss_connection_status" style="color: red;">未连接</span>
+                                    </div>
+                                </section>
+
+                                <section class="sf-section">
+                                    <h4>语音设定</h4>
+                                    <div class="setting-item">
+                                        <label for="moss_model">TTS模型</label>
+                                        <input type="text" id="moss_model" value="moss-tts" />
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="moss_voice_id">语音角色 / voice_id</label>
+                                        <select id="moss_voice_id"></select>
+                                        <small>先点“刷新音色列表”；如果列表为空，可以直接在下面手动填一个 MOSS voice_id。</small>
+                                        <input type="text" id="moss_voice_id_manual" placeholder="手动填写 voice_id，填写后优先使用" />
+                                    </div>
+                                    <div class="setting-item">
+                                        <button type="button" class="menu_button" id="refresh_moss_voices">刷新音色列表</button>
+                                    </div>
+                                    <div class="setting-item button-group sf-grid two sf-compact-grid sf-voice-slider-grid">
+                                        <div class="setting-item">
+                                            <label for="moss_response_format">音频格式</label>
+                                            <select id="moss_response_format">
+                                                <option value="mp3">mp3</option>
+                                                <option value="wav">wav</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <small>
+                                        MOSS 请求经酒馆服务端中转（/proxy）。TTS 只接受 voice_id；克隆音色会先创建 voice_id，再用于朗读。官方单人语音接口当前未公开语速字段，想调快慢请用悬浮进度条里的播放速度。
+                                    </small>
+                                </section>
+                                <section class="sf-section">
+                                    <details>
+                                        <summary style="font-size: 1.15em; font-weight: bold;">克隆音色</summary>
+                                        <small>上传一段清晰人声，MOSS 会创建可复用的 voice_id。创建音色接口只接受本机音频文件，不接受音频 URL 或 base64。</small>
+                                        <div class="setting-item">
+                                            <label>参考音频</label>
+                                            <div class="sf-file-row">
+                                                <label for="moss_clone_audio" class="menu_button sf-file-import-button">导入参考音频</label>
+                                                <input type="file" id="moss_clone_audio" accept=".mp3,.wav,.m4a,.mp4,.aac,.ogg,.flac,audio/*" style="display: none;" />
+                                                <span id="moss_clone_audio_name" class="sf-file-name">未选择音频</span>
+                                            </div>
+                                        </div>
+                                        <div class="setting-item">
+                                            <label for="moss_clone_name">音色名称</label>
+                                            <input type="text" id="moss_clone_name" placeholder="例如：xiangliu_voice" />
+                                        </div>
+                                        <div class="setting-item">
+                                            <label for="moss_clone_desc">音色描述（可选）</label>
+                                            <input type="text" id="moss_clone_desc" placeholder="例如：清冷男声 / 温柔女声" />
+                                        </div>
+                                        <div class="setting-item button-group">
+                                            <button type="button" class="menu_button" id="moss_clone_start">🎤 立即克隆</button>
+                                            <span id="moss_clone_status"></span>
+                                        </div>
+                                        <div id="moss_clone_list"><small>还没有 MOSS 克隆音色</small></div>
+                                    </details>
+                                </section>
+                            </div>
+
                             <!-- ---------- 三引擎共用 ---------- -->
                             <section class="sf-section">
                                 <h4>通用</h4>
@@ -306,7 +384,7 @@
                                     <summary style="font-size: 1.05em; font-weight: bold;">多人角色音色</summary>
                                     <div class="sf-collapse-body">
                                         <div class="setting-item button-group sf-role-voice-tools">
-                                            <small>群聊里会按消息名字匹配音色；没设置的角色使用上面的默认语音角色。硅基 / 火山分开保存，互不影响。</small>
+                                            <small>群聊里会按消息名字匹配音色；没设置的角色使用上面的默认语音角色。硅基 / 火山 / MiniMax / MOSS 分开保存，互不影响。</small>
                                             <button id="refresh_role_voices" class="menu_button" type="button">刷新当前聊天角色</button>
                                         </div>
                                         <div id="tts_role_voice_map" class="sf-role-voice-map">
@@ -464,6 +542,15 @@
                                         <button type="button" class="menu_button sf-cache-clear" data-engine="minimax">清空</button>
                                     </div>
                                     <div id="sf_cache_list_minimax" class="sf-cache-list" style="display: none;"><small>暂无缓存</small></div>
+                                </div>
+                                <div class="sf-cache-col">
+                                    <div class="sf-cache-col-head sf-cache-toggle" data-engine="moss" title="点击展开/收起缓存列表">
+                                        <span class="sf-cache-arrow" id="sf_cache_arrow_moss">▸</span>
+                                        <strong>MOSS</strong>
+                                        <span class="sf-cache-stats sf-cache-stats-moss" id="sf_cache_stats_moss"></span>
+                                        <button type="button" class="menu_button sf-cache-clear" data-engine="moss">清空</button>
+                                    </div>
+                                    <div id="sf_cache_list_moss" class="sf-cache-list" style="display: none;"><small>暂无缓存</small></div>
                                 </div>
                             </div>
                         </section>
