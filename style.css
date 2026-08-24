@@ -63,6 +63,10 @@
     margin-right: 10px;
 }
 
+.siliconflow-extension-settings .sf-voice-slider-grid input[type="range"] {
+    max-width: 100%;
+}
+
 .siliconflow-extension-settings .menu_button {
     padding: 8px 15px;
     margin: 5px;
@@ -520,4 +524,26 @@
     text-align: right;
     opacity: 0.6;
     font-size: 11px;
+}
+
+@media (max-width: 520px) {
+    .siliconflow-extension-settings .sf-voice-slider-grid {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 8px !important;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .siliconflow-extension-settings .sf-voice-slider-grid .setting-item {
+        min-width: 0;
+        width: 100%;
+        margin-bottom: 8px;
+    }
+
+    .siliconflow-extension-settings .sf-voice-slider-grid input[type="range"] {
+        width: 100% !important;
+        margin-right: 0;
+        box-sizing: border-box;
+    }
 }
