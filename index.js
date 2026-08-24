@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.1.6";
+const extensionVersion = "2.1.7";
 
 // 全局状态管理
 const audioState = {
@@ -223,6 +223,10 @@ function normalizeMinimaxHost(host) {
   // 旧域名不再出现在官方 T2A v2 文档里，容易对 /v1/t2a_v2 返回 404。
   if (/^https?:\/\/api\.minimax\.chat$/i.test(raw)) return defaultSettings.minimaxApiHost;
   return raw;
+}
+
+function isCorsProxyDisabledResponse(text) {
+  return /CORS proxy is disabled|enableCorsProxy|corsProxy/i.test(String(text || ""));
 }
 
 function syncMinimaxSettingsFromUi() {
@@ -808,7 +812,11 @@ async function synthesizeMinimax(text, voiceId, speed) {
   spd = Math.min(2.0, Math.max(0.5, spd));
 
   const host = normalizeMinimaxHost(s.minimaxApiHost || "https://api.minimaxi.com");
-  const url = `${host}/v1/t2a_v2?GroupId=${encodeURIComponent(groupId)}`;
+  const primaryUrl = `${host}/v1/t2a_v2?GroupId=${encodeURIComponent(groupId)}`;
+  const requestUrls = [primaryUrl];
+  if (host === "https://api.minimaxi.com") {
+    requestUrls.push(`https://api-bj.minimaxi.com/v1/t2a_v2?GroupId=${encodeURIComponent(groupId)}`);
+  }
   const body = {
     model: s.minimaxModel || "speech-02-hd",
     text,
@@ -818,34 +826,44 @@ async function synthesizeMinimax(text, voiceId, speed) {
     subtitle_enable: false,
   };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45000);
-
   let resp;
+  let requestedUrl = primaryUrl;
   try {
-    resp = await fetch("/proxy/" + encodeURIComponent(url), {
-      method: "POST",
-      headers: {
-        ...(typeof getRequestHeaders === "function" ? getRequestHeaders() : {}),
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch (e) {
-    clearTimeout(timeoutId);
-    if (e.name === "AbortError") {
-      throw new Error("请求超时（45秒）。可能文本太长或网络问题，换短一点的内容试试。");
+    for (let i = 0; i < requestUrls.length; i += 1) {
+      requestedUrl = requestUrls[i];
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
+      try {
+        resp = await fetch("/proxy/" + encodeURIComponent(requestedUrl), {
+          method: "POST",
+          headers: {
+            ...(typeof getRequestHeaders === "function" ? getRequestHeaders() : {}),
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      const responseText = resp.status === 404 ? await resp.clone().text().catch(() => "") : "";
+      if (resp.status !== 404 || i === requestUrls.length - 1 || isCorsProxyDisabledResponse(responseText)) break;
+      ttsLog("⚠️ MiniMax 国内主地址返回 404，自动尝试官方北京备用地址…");
     }
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("请求超时（45秒）。可能网络问题，请稍后重试。");
     throw new Error("MiniMax 请求失败：" + (e && e.message ? e.message : e) + "（需要酒馆服务端支持 /proxy 中转）");
   }
-  clearTimeout(timeoutId);
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "");
+    if (resp.status === 404 && isCorsProxyDisabledResponse(errText)) {
+      throw new Error("MiniMax HTTP 404：酒馆的 CORS 代理未开启。请在 config.yaml 把 enableCorsProxy 改为 true 后重启酒馆；或启动酒馆时加 --corsProxy。");
+    }
     if (resp.status === 404) {
-      throw new Error(`MiniMax HTTP 404：接口地址不存在。请把 MiniMax 的 API地址切到「国内 api.minimaxi.com」或「国际 api.minimax.io」，不要用旧域名；当前请求：${url}`);
+      throw new Error(`MiniMax HTTP 404：官方接口未找到。已尝试 ${new URL(requestedUrl).origin}；请检查酒馆 CORS 代理和网络，再稍后重试。`);
     }
     throw new Error(`MiniMax HTTP ${resp.status}: ${String(errText).slice(0, 200)}`);
   }
