@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.1.8";
+const extensionVersion = "2.1.9";
 
 // 全局状态管理
 const audioState = {
@@ -1210,7 +1210,7 @@ function collectCurrentChatSpeakers() {
   const chat = Array.isArray(context?.chat) ? context.chat : [];
   const names = [];
   chat.forEach(message => {
-    if (!message || message.is_user) return;
+    if (!message) return;
     const name = String(message.name || message.extra?.display_name || "").trim();
     if (name && !isTemplateSpeakerName(name) && !names.includes(name)) names.push(name);
   });
@@ -1301,7 +1301,8 @@ function getVoiceForSpeaker(speakerName) {
   const fallback = getDefaultVoice();
   if (!speakerName || isTemplateSpeakerName(speakerName)) return fallback;
   const mapped = getRoleVoiceMap()[speakerName];
-  return mapped || fallback;
+  // MiniMax 的旧音色 ID 有少数已经下线；映射里也同步替换，避免看似分配成功、实际接口回退。
+  return getEngine() === "minimax" ? normalizeMinimaxVoiceId(mapped || fallback) : (mapped || fallback);
 }
 
 // 保存三引擎 API 资料（按钮触发，带反馈）
@@ -3287,7 +3288,10 @@ function setupMessageListener() {
         return;
       }
       console.log('用户消息自动朗读最终文本:', textToRead.substring(0, 100));
-      generateTTS(textToRead);
+      const speakerName = getMessageSpeakerName(messageElement);
+      const voiceForSpeaker = getVoiceForSpeaker(speakerName);
+      if (speakerName) ttsLog("🎭 自动朗读说话人：" + speakerName + "，音色=" + voiceForSpeaker);
+      generateTTS(textToRead, null, voiceForSpeaker);
       return;
       
       const textStart = $("#image_text_start").val();
