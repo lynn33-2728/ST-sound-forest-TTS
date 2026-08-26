@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.2.1";
+const extensionVersion = "2.1.8";
 
 // 全局状态管理
 const audioState = {
@@ -111,7 +111,7 @@ const defaultSettings = {
   roleVoiceMap: {},
   customVoices: [], // 存储自定义音色列表
   // ===== 引擎切换与火山引擎配置 =====
-  engine: "siliconflow", // siliconflow | volcano | minimax | moss
+  engine: "siliconflow", // siliconflow | volcano
   volcAppId: "",
   volcAccessKey: "",
   volcSpeaker: "zh_female_vv_uranus_bigtts",
@@ -128,37 +128,8 @@ const defaultSettings = {
   minimaxCustomVoice: "", // 旧版单个自定义音色ID（已并入 minimaxClonedVoices，保留兼容）
   minimaxClonedVoices: [], // MiniMax「我的克隆音色」列表：[{id, name}]
   minimaxSpeed: 1.0,
-  roleVoiceMapMinimax: {}, // MiniMax 单独的多人角色音色映射
-  // ===== MOSS 配置 =====
-  mossApiKey: "",
-  mossApiHost: "https://api.mosi.cn",
-  mossModel: "moss-tts",
-  mossVoiceId: "",
-  mossVoices: [], // MOSS 音色列表：[{id, name}]
-  mossClonedVoices: [], // MOSS 在线克隆音色：[{id, name}]
-  mossResponseFormat: "mp3",
-  roleVoiceMapMoss: {}
+  roleVoiceMapMinimax: {} // MiniMax 单独的多人角色音色映射
 };
-
-// MOSS 官方文档公开列出的试听音色。部分新账号的列表接口会暂时返回空数组，
-// 此时仍让用户能直接选择官方 voice_id 测试 TTS，不把“0 个”误解成没有音色。
-const MOSS_OFFICIAL_VOICES = [
-  { id: "c6c0a40a-ea82-4468-9a21-333d3c4a76f6", name: "曼波有口音版" },
-  { id: "f80b6698-0066-430b-88a0-f0fb8796db34", name: "明太祖" },
-  { id: "ddc6e38b-6f55-4415-b21b-a88cad2cc1d9", name: "VOX AKUMA" },
-  { id: "7662a8a1-700c-466a-b66b-57ece9e2e231", name: "李白" },
-  { id: "f9a1416b-d006-4b77-9581-8f0e8ec1e401", name: "旁白Jake" },
-  { id: "faf7f550-0627-4fc6-8db0-d3bfdad49358", name: "经验女教师" },
-  { id: "fe85a513-9bf3-4ef7-aa0b-8b2d11e4db93", name: "少年感人声（男）" },
-  { id: "0804710c-8e5e-4b67-acda-5785ef13c309", name: "历史解说男声" },
-  { id: "9d1e88e9-3b9c-4992-a414-7a1cb3ff7ab5", name: "优雅英国女士" },
-  { id: "806c9695-6160-404e-8722-4f788d935af3", name: "轻快灵动女声" },
-  { id: "2fdf194e-c16e-4587-9027-0d3464e09b4e", name: "诗词朗读" },
-  { id: "133bd03b-d717-4a55-8974-7ffc9afc1b51", name: "故宫纪录片" },
-  { id: "26838557-6890-4505-bc7c-e8198443a141", name: "东北虎哥" },
-  { id: "19411508-8731-4b68-901d-7e4b8a98e23f", name: "忧伤的秋" },
-  { id: "944eb93b-3820-49f3-b2c0-4e37a31d1161", name: "三农农业旁白" },
-];
 
 // TTS模型和音色配置
 const TTS_MODELS = {
@@ -615,7 +586,7 @@ const VOLC_VOICES = [
 // 当前引擎：siliconflow | volcano | minimax
 function getEngine() {
   const e = extension_settings[extensionName]?.engine;
-  return e === "volcano" || e === "minimax" || e === "moss" ? e : "siliconflow";
+  return e === "volcano" || e === "minimax" ? e : "siliconflow";
 }
 
 // 火山当前音色：自定义（ICL 复刻）优先
@@ -806,22 +777,36 @@ const MINIMAX_VOICES = [
   { value: "presenter_female", name: "女性主持人", scene: "中文·女声" },
   { value: "audiobook_female_1", name: "女性有声书1", scene: "中文·女声" },
   { value: "audiobook_female_2", name: "女性有声书2", scene: "中文·女声" },
-  // ===== 新版音色 =====
+  // ===== 扩展音色（已核对 MiniMax 当前公开音色 ID） =====
   { value: "Chinese (Mandarin)_Unrestrained_Young_Man", name: "不羁青年（普通话）", scene: "新版音色" },
-  { value: "Calm_Woman", name: "沉稳女性", scene: "新版音色" },
-  { value: "Energetic_Man", name: "活力男性", scene: "新版音色" },
-  { value: "Gentle_Man", name: "温和男性", scene: "新版音色" },
-  { value: "Cute_Girl", name: "可爱女孩", scene: "新版音色" },
-  { value: "Deep_Voice_Man", name: "低沉男性", scene: "新版音色" },
+  { value: "Chinese (Mandarin)_Gentleman", name: "温润男声（普通话）", scene: "新版音色" },
+  { value: "Chinese (Mandarin)_Gentle_Youth", name: "温润青年（普通话）", scene: "新版音色" },
+  { value: "Chinese (Mandarin)_Warm_Girl", name: "温暖少女（普通话）", scene: "新版音色" },
+  { value: "Chinese (Mandarin)_Mature_Woman", name: "傲娇御姐（普通话）", scene: "新版音色" },
+  { value: "Chinese (Mandarin)_Male_Announcer", name: "播报男声（普通话）", scene: "新版音色" },
+  { value: "Chinese (Mandarin)_Radio_Host", name: "电台男主播（普通话）", scene: "新版音色" },
   { value: "English_Graceful_Lady", name: "优雅女士（英语）", scene: "新版音色" },
-  { value: "English_Persuasive_Man", name: "说服男声（英语）", scene: "新版音色" }
+  { value: "English_Gentle-voiced_man", name: "温和男声（英语）", scene: "新版音色" }
 ];
+
+const MINIMAX_REMOVED_VOICE_ID_MAP = {
+  "Calm_Woman": "Chinese (Mandarin)_Mature_Woman",
+  "Energetic_Man": "Chinese (Mandarin)_Male_Announcer",
+  "Gentle_Man": "Chinese (Mandarin)_Gentleman",
+  "Cute_Girl": "Chinese (Mandarin)_Warm_Girl",
+  "Deep_Voice_Man": "Chinese (Mandarin)_Radio_Host",
+  "English_Persuasive_Man": "English_Gentle-voiced_man",
+};
+
+function normalizeMinimaxVoiceId(voiceId) {
+  return MINIMAX_REMOVED_VOICE_ID_MAP[String(voiceId || "")] || voiceId;
+}
 
 // MiniMax 当前音色：自定义（复刻）优先
 function getMinimaxVoice() {
   const s = extension_settings[extensionName] || {};
   const custom = String(s.minimaxCustomVoice || "").trim();
-  return custom || s.minimaxVoice || defaultSettings.minimaxVoice;
+  return custom || normalizeMinimaxVoiceId(s.minimaxVoice || defaultSettings.minimaxVoice);
 }
 
 // MiniMax T2A v2 合成（经酒馆 /proxy 中转解决跨域），返回 mp3 Blob
@@ -917,225 +902,6 @@ async function synthesizeMinimax(text, voiceId, speed) {
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   }
   return new Blob([bytes], { type: "audio/mpeg" });
-}
-
-function normalizeMossHost(host) {
-  return String(host || defaultSettings.mossApiHost).trim().replace(/\/+$/, "") || defaultSettings.mossApiHost;
-}
-
-function syncMossSettingsFromUi() {
-  const s = extension_settings[extensionName] || (extension_settings[extensionName] = {});
-  if ($("#moss_api_key").length) s.mossApiKey = String($("#moss_api_key").val() || "").trim();
-  if ($("#moss_api_host").length) s.mossApiHost = normalizeMossHost($("#moss_api_host").val());
-  else s.mossApiHost = normalizeMossHost(s.mossApiHost);
-  if ($("#moss_model").length) s.mossModel = String($("#moss_model").val() || defaultSettings.mossModel).trim();
-  const manualVoice = $("#moss_voice_id_manual").length ? String($("#moss_voice_id_manual").val() || "").trim() : "";
-  if ($("#moss_voice_id").length || manualVoice) s.mossVoiceId = manualVoice || String($("#moss_voice_id").val() || "").trim();
-  if ($("#moss_response_format").length) s.mossResponseFormat = $("#moss_response_format").val() || defaultSettings.mossResponseFormat;
-  return s;
-}
-
-function getMossVoice() {
-  const s = extension_settings[extensionName] || {};
-  return String(s.mossVoiceId || "").trim();
-}
-
-async function readMossError(resp) {
-  const text = await resp.text().catch(() => "");
-  if (!text) return `HTTP ${resp.status}`;
-  try {
-    const data = JSON.parse(text);
-    const message = data?.error?.message || data?.message || data?.detail || text;
-    return `HTTP ${resp.status}: ${String(message).slice(0, 200)}`;
-  } catch (e) {
-    return `HTTP ${resp.status}: ${text.slice(0, 200)}`;
-  }
-}
-
-async function fetchMossJson(path, options = {}) {
-  const s = syncMossSettingsFromUi();
-  const apiKey = String(s.mossApiKey || "").trim();
-  if (!apiKey) throw new Error("请先填写 MOSS API Key");
-  const url = normalizeMossHost(s.mossApiHost) + path;
-  const resp = await fetch("/proxy/" + encodeURIComponent(url), {
-    ...options,
-    headers: {
-      ...(typeof getRequestHeaders === "function" ? getRequestHeaders() : {}),
-      ...(options.headers || {}),
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
-  if (!resp.ok) throw new Error(await readMossError(resp));
-  return resp.json();
-}
-
-async function refreshMossVoices(showToast = true) {
-  const data = await fetchMossJson("/v1/audio/voices?limit=150&status=ready", { method: "GET" });
-  const rawList = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.voices) ? data.voices : []);
-  const apiVoices = rawList
-    .map((v) => ({
-      id: String(v?.id || v?.voice_id || "").trim(),
-      name: String(v?.name || v?.display_name || v?.voice_name || v?.id || v?.voice_id || "").trim(),
-    }))
-    .filter((v) => v.id);
-  const usedOfficialFallback = apiVoices.length === 0;
-  const voices = usedOfficialFallback ? MOSS_OFFICIAL_VOICES.slice() : apiVoices;
-  extension_settings[extensionName].mossVoices = voices;
-  saveSettingsDebounced();
-  buildMossVoiceOptions();
-  renderRoleVoiceMap();
-  if (showToast) {
-    const note = usedOfficialFallback ? "接口暂未返回账号音色，已载入官方示例音色" : "已读取账号可用音色";
-    toastr.success(`${note} ${voices.length} 个`, "MOSS");
-  }
-  ttsLog("🔊 MOSS 音色列表已刷新：" + voices.length + " 个" + (usedOfficialFallback ? "（官方示例兜底）" : ""));
-  return voices;
-}
-
-async function createMossVoice(apiKey, file, name, description = "") {
-  const uploadFile = file;
-  const buildFormData = () => {
-    const formData = new FormData();
-    formData.append("audio_sample", uploadFile, uploadFile.name || "reference_audio.wav");
-    if (name) formData.append("name", name);
-    if (description) formData.append("description", description);
-    return formData;
-  };
-
-  const parseVoiceResponse = async (resp, source) => {
-    const data = await resp.json().catch(() => null);
-    const voiceId = String(data?.id || data?.voice_id || data?.data?.id || data?.data?.voice_id || "").trim();
-    if (!voiceId) throw new Error(source + "创建成功但没有返回 voice_id：" + JSON.stringify(data).slice(0, 180));
-    return { id: voiceId, name: String(data?.name || name || voiceId).trim() || voiceId };
-  };
-
-  const url = normalizeMossHost(extension_settings[extensionName]?.mossApiHost) + "/v1/audio/voices";
-  const request = async (targetUrl) => fetch(targetUrl, {
-    method: "POST",
-    headers: {
-      ...(typeof getRequestHeaders === "function" && targetUrl.startsWith("/proxy/") ? getRequestHeaders() : {}),
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: buildFormData(),
-  });
-
-  ttsLog("📤 MOSS 上传参考音频：" + (uploadFile.name || "reference_audio") + "（" + (uploadFile.size / 1024).toFixed(0) + " KB）");
-
-  // MOSS 不允许浏览器跨域直传，而酒馆内建 /proxy 会把 multipart 文件体转换成 JSON。
-  // 可选的本地 Server Plugin 保留文件流并只转发至 api.mosi.cn。
-  try {
-    const bridgeResp = await fetch("/api/plugins/sound-forest-moss-bridge/clone", {
-      method: "POST",
-      headers: {
-        ...(typeof getRequestHeaders === "function" ? getRequestHeaders() : {}),
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: buildFormData(),
-    });
-    if (bridgeResp.ok) {
-      ttsLog("✅ MOSS 克隆桥接服务已接收文件");
-      return parseVoiceResponse(bridgeResp, "MOSS 克隆桥接服务");
-    }
-    if (bridgeResp.status !== 404) {
-      throw new Error("MOSS 克隆桥接服务：" + await readMossError(bridgeResp));
-    }
-    ttsLog("ℹ️ 未安装 MOSS 克隆桥接服务，尝试旧兼容路径");
-  } catch (e) {
-    const msg = e && e.message ? e.message : String(e);
-    if (!/HTTP 404/.test(msg) && !/Failed to fetch/.test(msg)) throw e;
-  }
-
-  const failures = [];
-  try {
-    const directResp = await request(url);
-    if (directResp.ok) {
-      return parseVoiceResponse(directResp, "MOSS 直连");
-    }
-    failures.push("MOSS 直连：" + await readMossError(directResp));
-  } catch (e) {
-    failures.push("MOSS 直连：" + (e && e.message ? e.message : e));
-  }
-  ttsLog("↪️ MOSS 直连上传未成功，尝试酒馆 /proxy 中转");
-  try {
-    const proxyResp = await request("/proxy/" + encodeURIComponent(url));
-    if (proxyResp.ok) {
-      return parseVoiceResponse(proxyResp, "酒馆 /proxy");
-    }
-    failures.push("酒馆 /proxy：" + await readMossError(proxyResp));
-  } catch (e) {
-    failures.push("酒馆 /proxy：" + (e && e.message ? e.message : e));
-  }
-  throw new Error("MOSS 音色创建失败。" + failures.join("；") + "。请安装「MOSS 克隆桥接服务」；酒馆内建 /proxy 无法转发 multipart 文件上传。");
-}
-
-function renderMossCloneList() {
-  const box = $("#moss_clone_list");
-  if (!box.length) return;
-  const list = extension_settings[extensionName]?.mossClonedVoices || [];
-  if (!list.length) {
-    box.html("<small>还没有 MOSS 克隆音色。上传参考音频点「立即克隆」试试。</small>");
-    return;
-  }
-  box.html(list.map((v, i) => `
-    <div class="sf-clone-row" data-idx="${i}">
-      <span class="sf-clone-name">${escapeHtml(v.name || v.id)}</span>
-      <small class="sf-clone-id">${escapeHtml(v.id)}</small>
-      <button type="button" class="menu_button sf-moss-clone-del" data-idx="${i}" title="从列表移除（不影响 MOSS 官网的音色）">✕</button>
-    </div>
-  `).join(""));
-}
-
-async function synthesizeMoss(text, voiceId) {
-  const s = syncMossSettingsFromUi();
-  const apiKey = String(s.mossApiKey || "").trim();
-  const v = String(voiceId || s.mossVoiceId || "").trim();
-  if (!apiKey) throw new Error("请先在 API 页填写 MOSS API Key");
-  if (!v) throw new Error("请先填写或选择 MOSS voice_id");
-  if (!text) throw new Error("缺少必要参数: input");
-
-  const fmt = s.mossResponseFormat || "mp3";
-  const url = normalizeMossHost(s.mossApiHost) + "/v1/audio/speech";
-  const body = {
-    model: s.mossModel || "moss-tts",
-    input: text,
-    voice_id: v,
-    response_format: fmt,
-    delivery_method: "audio",
-  };
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000);
-  let resp;
-  try {
-    resp = await fetch("/proxy/" + encodeURIComponent(url), {
-      method: "POST",
-      headers: {
-        ...(typeof getRequestHeaders === "function" ? getRequestHeaders() : {}),
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch (e) {
-    clearTimeout(timeoutId);
-    if (e.name === "AbortError") throw new Error("MOSS 请求超时（60秒），换短一点的内容试试。");
-    throw new Error("MOSS 请求失败：" + (e && e.message ? e.message : e) + "（需要酒馆服务端支持 /proxy 中转）");
-  }
-  clearTimeout(timeoutId);
-
-  if (!resp.ok) throw new Error("MOSS " + await readMossError(resp));
-  const contentType = resp.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) {
-    const data = await resp.json().catch(() => ({}));
-    if (data.url) {
-      const audioResp = await fetch(data.url);
-      if (!audioResp.ok) throw new Error("MOSS 音频 URL 下载失败：" + audioResp.status);
-      return audioResp.blob();
-    }
-    throw new Error("MOSS 返回 JSON 但没有音频 URL：" + JSON.stringify(data).slice(0, 160));
-  }
-  return resp.blob();
 }
 
 function normalizeTagPairs(value) {
@@ -1364,14 +1130,6 @@ async function loadSettings() {
   }
   buildMinimaxVoiceOptions();
   renderMinimaxCloneList();
-  // MOSS 设置回显
-  $("#moss_api_key").val(extension_settings[extensionName].mossApiKey || "");
-  $("#moss_api_host").val(normalizeMossHost(extension_settings[extensionName].mossApiHost || defaultSettings.mossApiHost));
-  $("#moss_model").val(extension_settings[extensionName].mossModel || defaultSettings.mossModel);
-  $("#moss_response_format").val(extension_settings[extensionName].mossResponseFormat || defaultSettings.mossResponseFormat);
-  $("#moss_voice_id_manual").val(extension_settings[extensionName].mossVoiceId || "");
-  buildMossVoiceOptions();
-  renderMossCloneList();
   updateEngineUI();
 
   updateVoiceOptions();
@@ -1468,7 +1226,6 @@ function getDefaultVoice() {
   const engine = getEngine();
   if (engine === "volcano") return getVolcSpeaker();
   if (engine === "minimax") return getMinimaxVoice();
-  if (engine === "moss") return getMossVoice();
   return $("#tts_voice").val() || extension_settings[extensionName].ttsVoice || defaultSettings.ttsVoice;
 }
 
@@ -1483,10 +1240,6 @@ function getRoleVoiceMap() {
   if (engine === "minimax") {
     s.roleVoiceMapMinimax = s.roleVoiceMapMinimax || {};
     return s.roleVoiceMapMinimax;
-  }
-  if (engine === "moss") {
-    s.roleVoiceMapMoss = s.roleVoiceMapMoss || {};
-    return s.roleVoiceMapMoss;
   }
   s.roleVoiceMap = s.roleVoiceMap || {};
   return s.roleVoiceMap;
@@ -1510,17 +1263,6 @@ function getEngineVoiceOptions() {
     if (custom) options.unshift({ value: custom, label: `${custom}（自定义/复刻）` });
     (extension_settings[extensionName]?.minimaxClonedVoices || []).forEach(v => {
       if (v && v.id) options.unshift({ value: v.id, label: `${v.name || v.id}（我的克隆）` });
-    });
-    return options;
-  }
-  if (engine === "moss") {
-    const options = [];
-    const manual = String(extension_settings[extensionName]?.mossVoiceId || "").trim();
-    if (manual) options.push({ value: manual, label: `${manual}（当前 voice_id）` });
-    (extension_settings[extensionName]?.mossVoices || []).forEach(v => {
-      if (v && v.id && !options.some(opt => opt.value === v.id)) {
-        options.push({ value: v.id, label: `${v.name || v.id}（MOSS）` });
-      }
     });
     return options;
   }
@@ -1570,7 +1312,6 @@ function saveApiSettings() {
   s.volcAppId = String($("#volc_app_id").val() || "").trim();
   s.volcAccessKey = String($("#volc_access_key").val() || "").trim();
   syncMinimaxSettingsFromUi();
-  syncMossSettingsFromUi();
   saveSettingsDebounced();
   toastr.success("API 设置已保存，刷新后自动恢复", "声林");
   ttsLog("💾 API 设置已保存");
@@ -1603,16 +1344,13 @@ function saveSettings() {
   extension_settings[extensionName].autoPlay = $("#auto_play_audio").prop("checked");
   extension_settings[extensionName].autoPlayUser = $("#auto_play_user").prop("checked");
   // 引擎与火山设置
-  const selectedEngine = $("#tts_engine").val();
-  extension_settings[extensionName].engine = selectedEngine === "volcano" || selectedEngine === "minimax" || selectedEngine === "moss" ? selectedEngine : "siliconflow";
+  extension_settings[extensionName].engine = $("#tts_engine").val() === "volcano" ? "volcano" : ($("#tts_engine").val() === "minimax" ? "minimax" : "siliconflow");
   extension_settings[extensionName].volcAppId = String($("#volc_app_id").val() || "").trim();
   extension_settings[extensionName].volcAccessKey = String($("#volc_access_key").val() || "").trim();
   extension_settings[extensionName].volcSpeaker = $("#volc_speaker").val() || defaultSettings.volcSpeaker;
   extension_settings[extensionName].volcSpeed = parseFloat($("#volc_speed").val()) || defaultSettings.volcSpeed;
   // MiniMax 设置
   syncMinimaxSettingsFromUi();
-  // MOSS 设置
-  syncMossSettingsFromUi();
   
   saveSettingsDebounced();
   // 移除弹窗提示，改为控制台日志
@@ -1757,15 +1495,6 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
       return;
     }
   }
-  if (engine === "moss") {
-    syncMossSettingsFromUi();
-    const hasMossAuth = String(settings.mossApiKey || "").trim() && String(settings.mossVoiceId || "").trim();
-    if (!hasMossAuth) {
-      ttsLog("❌ 没有配置 MOSS API Key / voice_id");
-      toastr.error("请先在 API 页配置 MOSS API Key 和 voice_id", "TTS错误");
-      return;
-    }
-  }
 
   if (!text) {
     ttsLog("❌ 文本为空，不请求");
@@ -1773,7 +1502,7 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
     return;
   }
 
-  const engineLabel = { siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax", moss: "MOSS" }[engine] || engine;
+  const engineLabel = { siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax" }[engine] || engine;
   ttsLog("① 进入生成（" + engineLabel + "），文本长度 " + text.length + "：「" + text.substring(0, 30) + "」");
 
   // 先熄灭其它按钮，再把当前按钮立刻点亮成“生成中（黄）”——任何一次点击都能马上看到反馈
@@ -1788,9 +1517,7 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
     ? (parseFloat($("#volc_speed").val()) || settings.volcSpeed || 1.0)
     : engine === "minimax"
       ? (parseFloat($("#minimax_speed").val()) || settings.minimaxSpeed || 1.0)
-      : engine === "moss"
-        ? 1.0
-        : (parseFloat($("#tts_speed").val()) || 1.0);
+      : (parseFloat($("#tts_speed").val()) || 1.0);
   const gain = engine === "siliconflow" ? (parseFloat($("#tts_gain").val()) || 0) : 0;
   const cacheKey = JSON.stringify({ engine, text, voice: voiceValue, speed, gain });
 
@@ -1840,11 +1567,6 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
       ttsLog("③ 请求 MiniMax API 中… 音色=" + voiceValue);
       audioBlob = await synthesizeMinimax(text, voiceValue, speed);
       ttsLog("④ MiniMax 合成完成");
-    } else if (engine === "moss") {
-      // ---------- MOSS 分支 ----------
-      ttsLog("③ 请求 MOSS API 中… voice_id=" + voiceValue);
-      audioBlob = await synthesizeMoss(text, voiceValue);
-      ttsLog("④ MOSS 合成完成");
     } else {
       // ---------- 硅基流动分支 ----------
       let voiceParam;
@@ -1915,9 +1637,7 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
 
     playAudioUrl(audioUrl, buttonElement);
 
-    const fmt = engine === "siliconflow" ? (settings.responseFormat || "mp3")
-      : engine === "moss" ? (settings.mossResponseFormat || "mp3")
-        : "mp3";
+    const fmt = engine === "siliconflow" ? (settings.responseFormat || "mp3") : "mp3";
     const downloadLink = $(`<a href="${audioUrl}" download="tts_output.${fmt}">下载音频</a>`);
     $("#tts_output").empty().append(downloadLink);
 
@@ -1933,7 +1653,7 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
 
 // ===== 缓存面板：硅基 / 火山 并列显示，可播放 / 下载 / 删除 =====
 // 缓存面板各引擎列的展开状态（默认收起）
-const cachePanelExpanded = { siliconflow: false, volcano: false, minimax: false, moss: false };
+const cachePanelExpanded = { siliconflow: false, volcano: false, minimax: false };
 
 function formatCacheSize(bytes) {
   const mb = bytes / (1024 * 1024);
@@ -1946,14 +1666,13 @@ function renderCachePanel() {
     siliconflow: $("#sf_cache_list_siliconflow"),
     volcano: $("#sf_cache_list_volcano"),
     minimax: $("#sf_cache_list_minimax"),
-    moss: $("#sf_cache_list_moss"),
   };
   if (!lists.siliconflow.length) return;
 
-  const buckets = { siliconflow: [], volcano: [], minimax: [], moss: [] };
+  const buckets = { siliconflow: [], volcano: [], minimax: [] };
   ttsAudioCache.forEach((entry, key) => {
     if (!entry || typeof entry !== "object") return;
-    const engine = entry.engine === "volcano" || entry.engine === "minimax" || entry.engine === "moss" ? entry.engine : "siliconflow";
+    const engine = entry.engine === "volcano" || entry.engine === "minimax" ? entry.engine : "siliconflow";
     buckets[engine].push({ key, entry });
   });
 
@@ -2020,7 +1739,9 @@ function buildVolcSpeakerOptions() {
 function buildMinimaxVoiceOptions() {
   const select = $("#minimax_voice");
   if (!select.length) return;
-  const current = extension_settings[extensionName]?.minimaxVoice || defaultSettings.minimaxVoice;
+  const savedVoice = extension_settings[extensionName]?.minimaxVoice || defaultSettings.minimaxVoice;
+  const current = normalizeMinimaxVoiceId(savedVoice);
+  if (current !== savedVoice) extension_settings[extensionName].minimaxVoice = current;
   select.empty();
   const groups = new Map();
   MINIMAX_VOICES.forEach((v) => {
@@ -2042,37 +1763,6 @@ function buildMinimaxVoiceOptions() {
   select.val(current);
 }
 
-function buildMossVoiceOptions() {
-  const select = $("#moss_voice_id");
-  if (!select.length) return;
-  const current = extension_settings[extensionName]?.mossVoiceId || "";
-  select.empty();
-  select.append($("<option>").attr("value", "").text("手动填写 / 请选择 voice_id"));
-  const clones = extension_settings[extensionName]?.mossClonedVoices || [];
-  if (clones.length) {
-    const og = $("<optgroup>").attr("label", "我的克隆音色");
-    clones.forEach((v) => {
-      if (!v || !v.id) return;
-      og.append($("<option>").attr("value", v.id).text((v.name || v.id) + "（克隆）"));
-    });
-    select.append(og);
-  }
-  const voices = extension_settings[extensionName]?.mossVoices || [];
-  if (voices.length) {
-    const og = $("<optgroup>").attr("label", "MOSS 音色列表");
-    voices.forEach((v) => {
-      if (clones.some(c => c && c.id === v.id)) return;
-      if (!v || !v.id) return;
-      og.append($("<option>").attr("value", v.id).text(v.name || v.id));
-    });
-    select.append(og);
-  }
-  if (current && !voices.some(v => v && v.id === current) && !clones.some(v => v && v.id === current)) {
-    select.append($("<option>").attr("value", current).text(current + "（当前）"));
-  }
-  select.val(current);
-}
-
 // 引擎切换时：显示对应配置组，刷新角色音色映射
 function updateEngineUI() {
   const engine = getEngine();
@@ -2080,7 +1770,6 @@ function updateEngineUI() {
   $("#sf_engine_silicon").toggle(engine === "siliconflow");
   $("#sf_engine_volcano").toggle(engine === "volcano");
   $("#sf_engine_minimax").toggle(engine === "minimax");
-  $("#sf_engine_moss").toggle(engine === "moss");
   renderRoleVoiceMap();
 }
 
@@ -4128,9 +3817,7 @@ jQuery(async () => {
     if (getEngine() === "volcano") {
       extension_settings[extensionName].volcSpeaker = $("#volc_speaker").val();
     } else if (getEngine() === "minimax") {
-      syncMinimaxSettingsFromUi();
-    } else if (getEngine() === "moss") {
-      syncMossSettingsFromUi();
+      extension_settings[extensionName].minimaxVoice = $("#minimax_voice").val();
     } else {
       extension_settings[extensionName].ttsVoice = $("#tts_voice").val();
     }
@@ -4151,10 +3838,10 @@ jQuery(async () => {
   // ===== 引擎切换 =====
   $("#tts_engine").on("change", function() {
     const v = $(this).val();
-    extension_settings[extensionName].engine = v === "volcano" || v === "minimax" || v === "moss" ? v : "siliconflow";
+    extension_settings[extensionName].engine = v === "volcano" ? "volcano" : (v === "minimax" ? "minimax" : "siliconflow");
     updateEngineUI();
     saveSettingsDebounced();
-    ttsLog("🔀 已切换到「" + ({ siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax", moss: "MOSS" }[getEngine()]) + "」");
+    ttsLog("🔀 已切换到「" + ({ siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax" }[getEngine()]) + "」");
   });
 
   // ===== 火山设置自动保存 =====
@@ -4367,120 +4054,6 @@ jQuery(async () => {
     }
   });
 
-  // ===== MOSS 设置自动保存 =====
-  $("#moss_api_key, #moss_api_host, #moss_model, #moss_voice_id_manual").on("input", function() {
-    syncMossSettingsFromUi();
-    buildMossVoiceOptions();
-    saveSettingsDebounced();
-    renderRoleVoiceMap();
-  });
-  $("#moss_voice_id, #moss_response_format").on("change", function() {
-    if (this.id === "moss_voice_id") $("#moss_voice_id_manual").val("");
-    syncMossSettingsFromUi();
-    saveSettingsDebounced();
-    renderRoleVoiceMap();
-  });
-  $("#moss_clone_audio").on("change", function() {
-    const f = this.files && this.files[0];
-    $("#moss_clone_audio_name").text(f ? f.name : "未选择音频");
-  });
-  $("#moss_clone_start").on("click", async function() {
-    syncMossSettingsFromUi();
-    const s = extension_settings[extensionName] || {};
-    const statusEl = $("#moss_clone_status");
-    const setStatus = (text, color) => statusEl.text(text).css("color", color);
-    const apiKey = String(s.mossApiKey || "").trim();
-    if (!apiKey) {
-      toastr.error("请先在上方填写 MOSS API Key", "克隆音色");
-      return;
-    }
-    const audioInput = $("#moss_clone_audio")[0];
-    const audioFile = audioInput && audioInput.files ? audioInput.files[0] : null;
-    if (!audioFile || audioFile.size <= 0) {
-      toastr.error("请先导入一段参考音频（mp3 / wav / m4a）", "克隆音色");
-      return;
-    }
-    if (!looksLikeMinimaxAudio(audioFile)) {
-      toastr.error(`「${audioFile.name || "这个文件"}」不是音频文件，请导入 mp3 / wav / m4a 等音频。`, "克隆音色");
-      return;
-    }
-    const name = String($("#moss_clone_name").val() || "").trim() || (audioFile.name || "moss_voice").replace(/\.[^.]+$/, "");
-    const desc = String($("#moss_clone_desc").val() || "").trim();
-    try {
-      setStatus("上传并创建中…", "#ffd54a");
-      const voice = await createMossVoice(apiKey, audioFile, name, desc);
-      s.mossClonedVoices = Array.isArray(s.mossClonedVoices) ? s.mossClonedVoices : [];
-      if (!s.mossClonedVoices.some(v => v && v.id === voice.id)) {
-        s.mossClonedVoices.push(voice);
-      }
-      s.mossVoiceId = voice.id;
-      $("#moss_voice_id_manual").val("");
-      $("#moss_clone_name").val("");
-      $("#moss_clone_desc").val("");
-      $("#moss_clone_audio").val("");
-      $("#moss_clone_audio_name").text("未选择音频");
-      saveSettingsDebounced();
-      renderMossCloneList();
-      buildMossVoiceOptions();
-      renderRoleVoiceMap();
-      setStatus("创建成功，已选为当前音色", "#7bd88f");
-      toastr.success(`MOSS 音色 "${voice.name || voice.id}" 创建成功`, "克隆音色");
-      ttsLog("🎤 MOSS 克隆成功：" + voice.id);
-    } catch (e) {
-      const msg = e && e.message ? e.message : String(e);
-      setStatus("失败：" + msg.slice(0, 40), "#ff8a80");
-      statusEl.attr("title", msg);
-      toastr.error(msg, "MOSS 克隆失败");
-      ttsLog("❌ MOSS 克隆失败：" + msg);
-    }
-  });
-  $(document).on("click", ".sf-moss-clone-del", function() {
-    const idx = Number($(this).attr("data-idx"));
-    const s = extension_settings[extensionName] || {};
-    const list = s.mossClonedVoices || [];
-    if (idx >= 0 && idx < list.length) {
-      const removed = list.splice(idx, 1)[0];
-      if (removed && s.mossVoiceId === removed.id) s.mossVoiceId = "";
-      saveSettingsDebounced();
-      renderMossCloneList();
-      buildMossVoiceOptions();
-      renderRoleVoiceMap();
-      ttsLog("🗑 已移除 MOSS 克隆音色：" + (removed?.name || removed?.id || ""));
-    }
-  });
-  $("#refresh_moss_voices").on("click", async function() {
-    const btn = $(this);
-    btn.prop("disabled", true).text("刷新中…");
-    try {
-      await refreshMossVoices(true);
-    } catch (e) {
-      const msg = e && e.message ? e.message : String(e);
-      toastr.error(msg, "MOSS 音色列表");
-      ttsLog("❌ MOSS 音色列表刷新失败：" + msg);
-    } finally {
-      btn.prop("disabled", false).text("刷新音色列表");
-    }
-  });
-
-  // MOSS 测试连接：只验证 API Key 与音色列表权限，首次配置不要求先选 voice_id。
-  $("#test_moss_connection").on("click", async function() {
-    primeAudioOnce();
-    syncMossSettingsFromUi();
-    saveSettingsDebounced();
-    const status = $("#moss_connection_status");
-    status.text("测试中…").css("color", "#ffd54a");
-    try {
-      const voices = await refreshMossVoices(false);
-      status.text("已连接").css("color", "green");
-      ttsLog("✅ MOSS 连接成功，已读取音色 " + voices.length + " 个");
-      toastr.success(`API Key 有效，已读取 ${voices.length} 个音色；请再选择一个 voice_id。`, "MOSS 已连接");
-    } catch (e) {
-      status.text("未连接").css("color", "red");
-      ttsLog("❌ MOSS 连接失败：" + (e && e.message ? e.message : e));
-      toastr.error(e && e.message ? e.message : String(e), "MOSS 连接失败");
-    }
-  });
-
   // ===== 缓存面板操作（事件委托） =====
   $(document).on("click", ".sf-cache-play", function() {
     const entry = ttsAudioCache.get($(this).closest(".sf-cache-row").attr("data-key"));
@@ -4511,14 +4084,14 @@ jQuery(async () => {
   $(document).on("click", ".sf-cache-clear", function() {
     const engine = $(this).attr("data-engine");
     ttsAudioCache.forEach((entry, key) => {
-      const entryEngine = entry && (entry.engine === "volcano" || entry.engine === "minimax" || entry.engine === "moss") ? entry.engine : "siliconflow";
+      const entryEngine = entry && (entry.engine === "volcano" || entry.engine === "minimax") ? entry.engine : "siliconflow";
       if (entryEngine === engine) {
         try { URL.revokeObjectURL(entry.url); } catch (e) {}
         ttsAudioCache.delete(key);
       }
     });
     renderCachePanel();
-    const label = { siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax", moss: "MOSS" }[engine] || engine;
+    const label = { siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax" }[engine] || engine;
     toastr.success(`已清空${label}缓存`, "缓存");
   });
   // 缓存列头点击展开/收起（点到「清空」按钮时不触发）
