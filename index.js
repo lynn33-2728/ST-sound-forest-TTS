@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.2.2";
+const extensionVersion = "2.2.3";
 
 // 全局状态管理
 const audioState = {
@@ -241,11 +241,6 @@ function getMinimaxHost() {
   return normalizeMinimaxHost(extension_settings[extensionName]?.minimaxApiHost || "https://api.minimaxi.com");
 }
 
-function getMinimaxGroupQuery() {
-  const gid = String(extension_settings[extensionName]?.minimaxGroupId || "").trim();
-  return gid ? `?GroupId=${encodeURIComponent(gid)}` : "";
-}
-
 function normalizeMinimaxHost(host) {
   const raw = String(host || "").trim().replace(/\/+$/, "");
   if (!raw) return defaultSettings.minimaxApiHost;
@@ -357,7 +352,7 @@ function parseMinimaxFileId(data) {
 }
 
 async function uploadMinimaxCloneFile(apiKey, file) {
-  const url = `${getMinimaxHost()}/v1/files/upload${getMinimaxGroupQuery()}`;
+  const url = `${getMinimaxHost()}/v1/files/upload`;
   const formData = new FormData();
   const uploadFile = normalizeMinimaxCloneFile(file);
   const uploadName = uploadFile.name || file.name || "reference_audio.mp3";
@@ -410,7 +405,7 @@ async function cloneMinimaxVoice(apiKey, cfg) {
     aigc_watermark: false,
   };
   if (cfg.text) body.text = cfg.text;
-  const resp = await fetch(`${getMinimaxHost()}/v1/voice_clone${getMinimaxGroupQuery()}`, {
+  const resp = await fetch(`${getMinimaxHost()}/v1/voice_clone`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(body),
@@ -842,9 +837,8 @@ function getMinimaxVoice() {
 async function synthesizeMinimax(text, voiceId, speed) {
   const s = syncMinimaxSettingsFromUi();
   const apiKey = String(s.minimaxApiKey || "").trim();
-  const groupId = String(s.minimaxGroupId || "").trim();
-  if (!apiKey || !groupId) {
-    throw new Error("请先在 API 页填写 MiniMax 的 API Key 和 GroupID");
+  if (!apiKey) {
+    throw new Error("请先在 API 页填写 MiniMax 的 API Key");
   }
   if (!text || !voiceId) {
     throw new Error("缺少必要参数: text/voice_id");
@@ -855,10 +849,10 @@ async function synthesizeMinimax(text, voiceId, speed) {
   spd = Math.min(2.0, Math.max(0.5, spd));
 
   const host = normalizeMinimaxHost(s.minimaxApiHost || "https://api.minimaxi.com");
-  const primaryUrl = `${host}/v1/t2a_v2?GroupId=${encodeURIComponent(groupId)}`;
+  const primaryUrl = `${host}/v1/t2a_v2`;
   const requestUrls = [primaryUrl];
   if (host === "https://api.minimaxi.com") {
-    requestUrls.push(`https://api-bj.minimaxi.com/v1/t2a_v2?GroupId=${encodeURIComponent(groupId)}`);
+    requestUrls.push("https://api-bj.minimaxi.com/v1/t2a_v2");
   }
   const body = {
     model: s.minimaxModel || "speech-02-hd",
@@ -1359,7 +1353,6 @@ async function loadSettings() {
   renderVolcCloneList();
   // MiniMax 设置回显
   $("#minimax_api_key").val(extension_settings[extensionName].minimaxApiKey || "");
-  $("#minimax_group_id").val(extension_settings[extensionName].minimaxGroupId || "");
   $("#minimax_api_host").val(normalizeMinimaxHost(extension_settings[extensionName].minimaxApiHost || defaultSettings.minimaxApiHost));
   $("#minimax_model").val(extension_settings[extensionName].minimaxModel || defaultSettings.minimaxModel);
   $("#minimax_custom_voice").val(extension_settings[extensionName].minimaxCustomVoice || "");
@@ -1764,10 +1757,10 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
     }
   }
   if (engine === "minimax") {
-    const hasMmAuth = String(settings.minimaxApiKey || "").trim() && String(settings.minimaxGroupId || "").trim();
+    const hasMmAuth = String(settings.minimaxApiKey || "").trim();
     if (!hasMmAuth) {
-      ttsLog("❌ 没有配置 MiniMax API Key / GroupID");
-      toastr.error("请先在 API 页配置 MiniMax API Key 和 GroupID", "TTS错误");
+      ttsLog("❌ 没有配置 MiniMax API Key");
+      toastr.error("请先在 API 页配置 MiniMax API Key", "TTS错误");
       return;
     }
   }
@@ -4261,7 +4254,7 @@ jQuery(async () => {
   });
 
   // ===== MiniMax 设置自动保存 =====
-  $("#minimax_api_key, #minimax_group_id, #minimax_custom_voice").on("input", function() {
+  $("#minimax_api_key, #minimax_custom_voice").on("input", function() {
     syncMinimaxSettingsFromUi();
     saveSettingsDebounced();
   });

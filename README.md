@@ -51,7 +51,7 @@ https://github.com/lynn33-2728/sound-forest-TTS
 |---|---|---|
 | 硅基流动 | API 密钥 | [siliconflow.cn](https://siliconflow.cn) |
 | 火山引擎 | AppID + Access Key | [火山引擎语音控制台](https://console.volcengine.com/speech/overview)（开通「大模型语音合成」） |
-| MiniMax | API Key + GroupID | [MiniMax 开放平台](https://platform.minimaxi.com)（账户管理 → 接口密钥） |
+| MiniMax | API Key（无需 GroupID） | [MiniMax 开放平台](https://platform.minimaxi.com)（账户管理 → 接口密钥） |
 | MOSS | API Key + voice_id | [Moss API 平台](https://platform.mosi.cn/docs/getting-started/auth/) |
 
 说明：
