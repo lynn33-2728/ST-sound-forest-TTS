@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.2.3";
+const extensionVersion = "2.2.4";
 
 // 全局状态管理
 const audioState = {
@@ -180,6 +180,14 @@ const TTS_MODELS = {
 // ============ 火山引擎 ============
 const VOLC_V3_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional";
 const VOLC_GET_VOICE_URL = "https://openspeech.bytedance.com/api/v3/tts/get_voice";
+
+function createVolcRequestId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
 
 // 向火山官方查询复刻音色的训练状态（status 2/4 = 可用于合成）
 async function verifyVolcCloneVoice(speakerId) {
@@ -685,6 +693,7 @@ async function synthesizeVolcano(text, speaker, speed) {
   }
 
   const resourceId = inferVolcResourceId(speaker);
+  const requestId = createVolcRequestId();
   const body = {
     user: { uid: "st_user" },
     req_params: {
@@ -714,6 +723,7 @@ async function synthesizeVolcano(text, speaker, speed) {
           "X-Api-App-Id": appId,
           "X-Api-Access-Key": accessKey,
           "X-Api-Resource-Id": resourceId,
+          "X-Api-Request-Id": requestId,
         },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -736,39 +746,57 @@ async function synthesizeVolcano(text, speaker, speed) {
     throw new Error("火山引擎请求失败：" + (lastError && lastError.message ? lastError.message : lastError) + "（需要酒馆服务端支持 /proxy 中转）");
   }
 
-  const logid = resp.headers.get("X-Tt-Logid") || "";
+  const logid = resp.headers.get("X-Tt-Logid") || requestId;
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "");
     throw new Error(`火山引擎 HTTP ${resp.status}: ${String(errText).slice(0, 200)}${logid ? ` (logid: ${logid})` : ""}`);
   }
 
-  // V3 单向流式：逐行 JSON，data 字段是 base64 音频分片
+  // V3 单向流式：逐行 JSON，data 字段是 base64 音频分片。
+  // 注意最后一个 JSON 不一定有换行；旧代码会漏读那一帧并误报“未返回音频”。
   const audioChunks = [];
+  const serverNotes = [];
+  let rawPreview = "";
   try {
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    const consumeLine = (line) => {
+      let t = String(line || "").trim();
+      if (!t) return;
+      // 也兼容代理意外切到 SSE 时的 data: 前缀。
+      if (t.startsWith("data:")) t = t.slice(5).trim();
+      if (!t || t === "[DONE]") return;
+      if (rawPreview.length < 400) rawPreview += (rawPreview ? " | " : "") + t.slice(0, 180);
+      let json;
+      try {
+        json = JSON.parse(t);
+      } catch (e) {
+        return;
+      }
+      const code = json.code === undefined || json.code === null ? null : Number(json.code);
+      if (json.data) {
+        const bin = atob(json.data);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        audioChunks.push(bytes);
+      }
+      if (json.message) serverNotes.push(String(json.message));
+      // 0 与 20000000 都是该接口可能出现的成功状态；其它数字一律原样抛出。
+      if (code !== null && code !== 0 && code !== 20000000) {
+        throw new Error(`火山引擎错误 ${json.code}: ${json.message || "合成失败"}`);
+      }
+    };
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t) continue;
-        let json;
-        try { json = JSON.parse(t); } catch (e) { continue; }
-        if (json.data) {
-          const bin = atob(json.data);
-          const bytes = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-          audioChunks.push(bytes);
-        } else if (json.code && json.code !== 20000000) {
-          throw new Error(`火山引擎错误 ${json.code}: ${json.message || "合成失败"}`);
-        }
-      }
+      lines.forEach(consumeLine);
     }
+    buffer += decoder.decode();
+    consumeLine(buffer);
   } catch (e) {
     if (e.name === "AbortError") {
       throw new Error("火山引擎读取音频超时（90 秒）。请稍后重试。");
@@ -777,7 +805,9 @@ async function synthesizeVolcano(text, speaker, speed) {
   }
 
   if (audioChunks.length === 0) {
-    throw new Error(`火山引擎未返回音频数据${logid ? ` (logid: ${logid})` : ""}`);
+    const serverMessage = serverNotes.filter(Boolean).slice(-2).join("；");
+    const detail = serverMessage || (rawPreview ? `响应片段：${rawPreview}` : "响应中没有音频分片");
+    throw new Error(`火山引擎未返回音频数据：${detail} (logid: ${logid})`);
   }
   return new Blob(audioChunks, { type: "audio/mpeg" });
 }
