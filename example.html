@@ -228,9 +228,11 @@
                                         <div class="setting-item">
                                             <label for="minimax_model">TTS模型</label>
                                             <select id="minimax_model">
-                                                <option value="speech-2.6-hd">Speech-2.6-HD（新·高质量）</option>
-                                                <option value="speech-2.6-turbo">Speech-2.6-Turbo（新·快速）</option>
-                                                <option value="speech-02-hd" selected>Speech-02-HD（高质量）</option>
+                                                <option value="speech-2.8-hd" selected>Speech-2.8-HD（最新·高质量）</option>
+                                                <option value="speech-2.8-turbo">Speech-2.8-Turbo（最新·快速）</option>
+                                                <option value="speech-2.6-hd">Speech-2.6-HD（高质量）</option>
+                                                <option value="speech-2.6-turbo">Speech-2.6-Turbo（快速）</option>
+                                                <option value="speech-02-hd">Speech-02-HD（旧版高质量）</option>
                                                 <option value="speech-02-turbo">Speech-02-Turbo（快速）</option>
                                                 <option value="speech-01-hd">Speech-01-HD（旧版）</option>
                                                 <option value="speech-01-turbo">Speech-01-Turbo（旧版）</option>
@@ -250,7 +252,7 @@
                                         <input type="range" id="minimax_speed" min="0.5" max="2" step="0.01" value="1" />
                                     </div>
                                     <small>
-                                        语音合成经酒馆服务端中转（/proxy）；若终端提示 CORS proxy is disabled，请在酒馆 config.yaml 把 enableCorsProxy 改为 true 后重启。克隆音色为 MiniMax 官方直连，需浏览器能访问 api.minimaxi.com。
+                                        MiniMax 语音合成和音色克隆均直连官方接口；国内 Key 请选择国内地址，国际 Key 请选择国际地址。
                                     </small>
                                 </section>
 

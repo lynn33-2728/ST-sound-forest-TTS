@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.2.4";
+const extensionVersion = "2.2.5";
 
 // 全局状态管理
 const audioState = {
@@ -123,7 +123,7 @@ const defaultSettings = {
   minimaxApiKey: "",
   minimaxGroupId: "",
   minimaxApiHost: "https://api.minimaxi.com",
-  minimaxModel: "speech-02-hd",
+  minimaxModel: "speech-2.8-hd",
   minimaxVoice: "female-shaonv",
   minimaxCustomVoice: "", // 旧版单个自定义音色ID（已并入 minimaxClonedVoices，保留兼容）
   minimaxClonedVoices: [], // MiniMax「我的克隆音色」列表：[{id, name}]
@@ -255,10 +255,6 @@ function normalizeMinimaxHost(host) {
   // 旧域名不再出现在官方 T2A v2 文档里，容易对 /v1/t2a_v2 返回 404。
   if (/^https?:\/\/api\.minimax\.chat$/i.test(raw)) return defaultSettings.minimaxApiHost;
   return raw;
-}
-
-function isCorsProxyDisabledResponse(text) {
-  return /CORS proxy is disabled|enableCorsProxy|corsProxy/i.test(String(text || ""));
 }
 
 function syncMinimaxSettingsFromUi() {
@@ -863,7 +859,8 @@ function getMinimaxVoice() {
   return custom || normalizeMinimaxVoiceId(s.minimaxVoice || defaultSettings.minimaxVoice);
 }
 
-// MiniMax T2A v2 合成（经酒馆 /proxy 中转解决跨域），返回 mp3 Blob
+// MiniMax T2A v2 合成。官方接口允许浏览器跨域直连；直连还能避免
+// SillyTavern Basic Auth 与 MiniMax Bearer Token 共用 Authorization 头而冲突。
 async function synthesizeMinimax(text, voiceId, speed) {
   const s = syncMinimaxSettingsFromUi();
   const apiKey = String(s.minimaxApiKey || "").trim();
@@ -885,7 +882,7 @@ async function synthesizeMinimax(text, voiceId, speed) {
     requestUrls.push("https://api-bj.minimaxi.com/v1/t2a_v2");
   }
   const body = {
-    model: s.minimaxModel || "speech-02-hd",
+    model: s.minimaxModel || "speech-2.8-hd",
     text,
     stream: false,
     voice_setting: { voice_id: voiceId, speed: spd, vol: 1, pitch: 0 },
@@ -901,36 +898,39 @@ async function synthesizeMinimax(text, voiceId, speed) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 45000);
       try {
-        resp = await fetch("/proxy/" + encodeURIComponent(requestedUrl), {
+        resp = await fetch(requestedUrl, {
           method: "POST",
           headers: {
-            ...(typeof getRequestHeaders === "function" ? getRequestHeaders() : {}),
             "Content-Type": "application/json",
             "Authorization": `Bearer ${apiKey}`,
           },
           body: JSON.stringify(body),
+          credentials: "omit",
           signal: controller.signal,
         });
       } finally {
         clearTimeout(timeoutId);
       }
 
-      const responseText = resp.status === 404 ? await resp.clone().text().catch(() => "") : "";
-      if (resp.status !== 404 || i === requestUrls.length - 1 || isCorsProxyDisabledResponse(responseText)) break;
+      if (resp.status !== 404 || i === requestUrls.length - 1) break;
       ttsLog("⚠️ MiniMax 国内主地址返回 404，自动尝试官方北京备用地址…");
     }
   } catch (e) {
     if (e.name === "AbortError") throw new Error("请求超时（45秒）。可能网络问题，请稍后重试。");
-    throw new Error("MiniMax 请求失败：" + (e && e.message ? e.message : e) + "（需要酒馆服务端支持 /proxy 中转）");
+    throw new Error("MiniMax 请求失败：" + (e && e.message ? e.message : e) + "（请检查网络及 API 地址）");
   }
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "");
-    if (resp.status === 404 && isCorsProxyDisabledResponse(errText)) {
-      throw new Error("MiniMax HTTP 404：酒馆的 CORS 代理未开启。请在 config.yaml 把 enableCorsProxy 改为 true 后重启酒馆；或启动酒馆时加 --corsProxy。");
-    }
     if (resp.status === 404) {
-      throw new Error(`MiniMax HTTP 404：官方接口未找到。已尝试 ${new URL(requestedUrl).origin}；请检查酒馆 CORS 代理和网络，再稍后重试。`);
+      throw new Error(`MiniMax HTTP 404：官方接口未找到。已尝试 ${new URL(requestedUrl).origin}；请检查 API 地址和网络，再稍后重试。`);
+    }
+    if (resp.status === 401) {
+      const looksLikeHtml = /<!doctype html|<html|basicAuth/i.test(errText);
+      if (looksLikeHtml) {
+        throw new Error("MiniMax HTTP 401：请求被网页鉴权或反向代理拦截，请确认 API 地址保持为 MiniMax 官方地址，不要填写酒馆或其他中转地址。");
+      }
+      throw new Error(`MiniMax HTTP 401：API Key 未通过验证，请确认 Key 属于当前所选的国内/国际站。${errText ? ` 官方返回：${String(errText).slice(0, 120)}` : ""}`);
     }
     throw new Error(`MiniMax HTTP ${resp.status}: ${String(errText).slice(0, 200)}`);
   }
