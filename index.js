@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, getRequestHeaders } fr
 // 扩展配置：按实际安装文件夹自动识别，避免仓库名改了以后找不到 example.html
 const extensionFolderPath = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const extensionName = decodeURIComponent(extensionFolderPath.split("/").pop() || "ST-sound-forest-TTS");
-const extensionVersion = "2.2.5";
+const extensionVersion = "2.2.6";
 
 // 全局状态管理
 const audioState = {
@@ -111,7 +111,7 @@ const defaultSettings = {
   roleVoiceMap: {},
   customVoices: [], // 存储自定义音色列表
   // ===== 引擎切换与火山引擎配置 =====
-  engine: "siliconflow", // siliconflow | volcano | minimax | moss
+  engine: "siliconflow", // siliconflow | volcano | minimax | moss | fish
   volcAppId: "",
   volcAccessKey: "",
   volcSpeaker: "zh_female_vv_uranus_bigtts",
@@ -137,7 +137,13 @@ const defaultSettings = {
   mossVoices: [], // MOSS 音色列表：[{id, name}]
   mossClonedVoices: [], // MOSS 在线克隆音色：[{id, name}]
   mossResponseFormat: "mp3",
-  roleVoiceMapMoss: {}
+  roleVoiceMapMoss: {},
+  fishApiKey: "",
+  fishModel: "s2.1-pro-free",
+  fishVoiceId: "",
+  fishManualVoiceId: "",
+  fishVoices: [],
+  roleVoiceMapFish: {}
 };
 
 // MOSS 官方文档公开列出的试听音色。部分新账号的列表接口会暂时返回空数组，
@@ -611,10 +617,10 @@ const VOLC_VOICES = [
   { value: "en_female_skye_emo_v2_mars_bigtts", name: "Serena", scene: "多语种" }
 ];
 
-// 当前引擎：siliconflow | volcano | minimax
+// 当前引擎
 function getEngine() {
   const e = extension_settings[extensionName]?.engine;
-  return e === "volcano" || e === "minimax" || e === "moss" ? e : "siliconflow";
+  return e === "volcano" || e === "minimax" || e === "moss" || e === "fish" ? e : "siliconflow";
 }
 
 // 火山当前音色：自定义（ICL 复刻）优先
@@ -1176,6 +1182,95 @@ async function synthesizeMoss(text, voiceId) {
   return resp.blob();
 }
 
+function syncFishSettingsFromUi() {
+  const s = extension_settings[extensionName] || (extension_settings[extensionName] = {});
+  if ($("#fish_api_key").length) s.fishApiKey = String($("#fish_api_key").val() || "").trim();
+  if ($("#fish_model").length) s.fishModel = $("#fish_model").val() || defaultSettings.fishModel;
+  if ($("#fish_voice_id").length) s.fishVoiceId = String($("#fish_voice_id").val() || "").trim();
+  if ($("#fish_voice_id_manual").length) s.fishManualVoiceId = String($("#fish_voice_id_manual").val() || "").trim();
+  return s;
+}
+
+function getFishVoice() {
+  const s = extension_settings[extensionName] || {};
+  return String(s.fishManualVoiceId || s.fishVoiceId || "").trim();
+}
+
+async function refreshFishVoices(showToast = true) {
+  const s = syncFishSettingsFromUi();
+  const apiKey = String(s.fishApiKey || "").trim();
+  if (!apiKey) throw new Error("请先填写 Fish Audio API Key");
+  const voices = [];
+  for (let page = 1; page <= 100; page += 1) {
+    const url = `https://api.fish.audio/model?self=true&page_size=100&page_number=${page}`;
+    const resp = await fetch("/proxy/" + encodeURIComponent(url), {
+      method: "GET",
+      headers: {
+        ...(typeof getRequestHeaders === "function" ? getRequestHeaders() : {}),
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+    if (!resp.ok) throw new Error("Fish Audio " + await readMossError(resp));
+    const data = await resp.json();
+    if (!Array.isArray(data?.items)) throw new Error("Fish Audio 音色列表格式不正确");
+    data.items.forEach((item) => {
+      const id = String(item?._id || "").trim();
+      if (id && (item.type === "tts" || item.type === "svc") &&
+          item.state !== "training" && item.state !== "failed" &&
+          !voices.some((voice) => voice.id === id)) {
+        voices.push({ id, name: String(item.title || id).trim() });
+      }
+    });
+    if (data.has_more === false || (Number.isFinite(data.total) && page * 100 >= data.total) ||
+        (data.has_more !== true && data.items.length < 100)) break;
+    if (page === 100) throw new Error("Fish Audio 音色超过 100 页，无法完整读取");
+  }
+  s.fishVoices = voices;
+  saveSettingsDebounced();
+  buildFishVoiceOptions();
+  renderRoleVoiceMap();
+  if (showToast) toastr.success(`已读取我的音色 ${voices.length} 个`, "Fish Audio");
+  ttsLog("Fish Audio 音色列表已刷新：" + voices.length + " 个");
+  return voices;
+}
+
+async function synthesizeFish(text, voiceId) {
+  const s = syncFishSettingsFromUi();
+  const apiKey = String(s.fishApiKey || "").trim();
+  const referenceId = String(voiceId || getFishVoice()).trim();
+  if (!apiKey) throw new Error("请先填写 Fish Audio API Key");
+  if (!referenceId) throw new Error("请先选择或填写 Fish Audio 音色 ID");
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+  let resp;
+  try {
+    resp = await fetch("/proxy/" + encodeURIComponent("https://api.fish.audio/v1/tts"), {
+      method: "POST",
+      headers: {
+        ...(typeof getRequestHeaders === "function" ? getRequestHeaders() : {}),
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        model: s.fishModel || defaultSettings.fishModel,
+      },
+      body: JSON.stringify({ text, reference_id: referenceId, format: "mp3" }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("Fish Audio 请求超时（60 秒）");
+    throw new Error("Fish Audio 请求失败：" + (e && e.message ? e.message : e));
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (!resp.ok) throw new Error("Fish Audio " + await readMossError(resp));
+  const contentType = resp.headers.get("content-type") || "";
+  if (contentType.includes("json") || contentType.includes("text/html")) {
+    throw new Error("Fish Audio 未返回音频：" + (await resp.text()).slice(0, 180));
+  }
+  const audio = await resp.blob();
+  if (!audio.size) throw new Error("Fish Audio 返回了空音频");
+  return audio;
+}
+
 function normalizeTagPairs(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -1409,6 +1504,10 @@ async function loadSettings() {
   $("#moss_voice_id_manual").val(extension_settings[extensionName].mossVoiceId || "");
   buildMossVoiceOptions();
   renderMossCloneList();
+  $("#fish_api_key").val(extension_settings[extensionName].fishApiKey || "");
+  $("#fish_model").val(extension_settings[extensionName].fishModel || defaultSettings.fishModel);
+  $("#fish_voice_id_manual").val(extension_settings[extensionName].fishManualVoiceId || "");
+  buildFishVoiceOptions();
   updateEngineUI();
 
   updateVoiceOptions();
@@ -1506,6 +1605,7 @@ function getDefaultVoice() {
   if (engine === "volcano") return getVolcSpeaker();
   if (engine === "minimax") return getMinimaxVoice();
   if (engine === "moss") return getMossVoice();
+  if (engine === "fish") return getFishVoice();
   return $("#tts_voice").val() || extension_settings[extensionName].ttsVoice || defaultSettings.ttsVoice;
 }
 
@@ -1524,6 +1624,10 @@ function getRoleVoiceMap() {
   if (engine === "moss") {
     s.roleVoiceMapMoss = s.roleVoiceMapMoss || {};
     return s.roleVoiceMapMoss;
+  }
+  if (engine === "fish") {
+    s.roleVoiceMapFish = s.roleVoiceMapFish || {};
+    return s.roleVoiceMapFish;
   }
   s.roleVoiceMap = s.roleVoiceMap || {};
   return s.roleVoiceMap;
@@ -1559,6 +1663,22 @@ function getEngineVoiceOptions() {
         options.push({ value: v.id, label: `${v.name || v.id}（MOSS）` });
       }
     });
+    return options;
+  }
+  if (engine === "fish") {
+    const options = [];
+    const s = extension_settings[extensionName] || {};
+    const manual = String(s.fishManualVoiceId || "").trim();
+    if (manual) options.push({ value: manual, label: `${manual}（手动音色）` });
+    (s.fishVoices || []).forEach((voice) => {
+      if (voice?.id && !options.some((option) => option.value === voice.id)) {
+        options.push({ value: voice.id, label: voice.name || voice.id });
+      }
+    });
+    const selected = String(s.fishVoiceId || "").trim();
+    if (selected && !options.some((option) => option.value === selected)) {
+      options.push({ value: selected, label: `${selected}（已保存）` });
+    }
     return options;
   }
   return getAllVoiceOptions();
@@ -1608,6 +1728,7 @@ function saveApiSettings() {
   s.volcAccessKey = String($("#volc_access_key").val() || "").trim();
   syncMinimaxSettingsFromUi();
   syncMossSettingsFromUi();
+  syncFishSettingsFromUi();
   saveSettingsDebounced();
   toastr.success("API 设置已保存，刷新后自动恢复", "声林");
   ttsLog("💾 API 设置已保存");
@@ -1641,7 +1762,7 @@ function saveSettings() {
   extension_settings[extensionName].autoPlayUser = $("#auto_play_user").prop("checked");
   // 引擎与火山设置
   const selectedEngine = $("#tts_engine").val();
-  extension_settings[extensionName].engine = selectedEngine === "volcano" || selectedEngine === "minimax" || selectedEngine === "moss" ? selectedEngine : "siliconflow";
+  extension_settings[extensionName].engine = selectedEngine === "volcano" || selectedEngine === "minimax" || selectedEngine === "moss" || selectedEngine === "fish" ? selectedEngine : "siliconflow";
   extension_settings[extensionName].volcAppId = String($("#volc_app_id").val() || "").trim();
   extension_settings[extensionName].volcAccessKey = String($("#volc_access_key").val() || "").trim();
   extension_settings[extensionName].volcSpeaker = $("#volc_speaker").val() || defaultSettings.volcSpeaker;
@@ -1650,6 +1771,7 @@ function saveSettings() {
   syncMinimaxSettingsFromUi();
   // MOSS 设置
   syncMossSettingsFromUi();
+  syncFishSettingsFromUi();
   
   saveSettingsDebounced();
   // 移除弹窗提示，改为控制台日志
@@ -1786,6 +1908,13 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
       return;
     }
   }
+  if (engine === "fish") {
+    syncFishSettingsFromUi();
+    if (!String(settings.fishApiKey || "").trim()) {
+      toastr.error("请先在 API 页填写 Fish Audio API Key", "TTS错误");
+      return;
+    }
+  }
   if (engine === "minimax") {
     const hasMmAuth = String(settings.minimaxApiKey || "").trim();
     if (!hasMmAuth) {
@@ -1810,7 +1939,7 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
     return;
   }
 
-  const engineLabel = { siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax", moss: "MOSS" }[engine] || engine;
+  const engineLabel = { siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax", moss: "MOSS", fish: "Fish Audio" }[engine] || engine;
   ttsLog("① 进入生成（" + engineLabel + "），文本长度 " + text.length + "：「" + text.substring(0, 30) + "」");
 
   // 先熄灭其它按钮，再把当前按钮立刻点亮成“生成中（黄）”——任何一次点击都能马上看到反馈
@@ -1825,11 +1954,12 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
     ? (parseFloat($("#volc_speed").val()) || settings.volcSpeed || 1.0)
     : engine === "minimax"
       ? (parseFloat($("#minimax_speed").val()) || settings.minimaxSpeed || 1.0)
-      : engine === "moss"
+      : engine === "moss" || engine === "fish"
         ? 1.0
         : (parseFloat($("#tts_speed").val()) || 1.0);
   const gain = engine === "siliconflow" ? (parseFloat($("#tts_gain").val()) || 0) : 0;
-  const cacheKey = JSON.stringify({ engine, text, voice: voiceValue, speed, gain });
+  const cacheKey = JSON.stringify({ engine, text, voice: voiceValue, speed, gain,
+    ...(engine === "fish" ? { model: settings.fishModel || defaultSettings.fishModel } : {}) });
 
   // 命中缓存：同一段文字 + 同一音色 + 同一语速音量，直接播放，不再请求 API（不扣费）
   const cachedEntry = ttsAudioCache.get(cacheKey);
@@ -1882,6 +2012,10 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
       ttsLog("③ 请求 MOSS API 中… voice_id=" + voiceValue);
       audioBlob = await synthesizeMoss(text, voiceValue);
       ttsLog("④ MOSS 合成完成");
+    } else if (engine === "fish") {
+      ttsLog("③ 请求 Fish Audio API 中… reference_id=" + voiceValue);
+      audioBlob = await synthesizeFish(text, voiceValue);
+      ttsLog("④ Fish Audio 合成完成");
     } else {
       // ---------- 硅基流动分支 ----------
       let voiceParam;
@@ -1970,7 +2104,7 @@ async function generateTTS(text, buttonElement = null, voiceOverride = null) {
 
 // ===== 缓存面板：硅基 / 火山 并列显示，可播放 / 下载 / 删除 =====
 // 缓存面板各引擎列的展开状态（默认收起）
-const cachePanelExpanded = { siliconflow: false, volcano: false, minimax: false, moss: false };
+const cachePanelExpanded = { siliconflow: false, volcano: false, minimax: false, moss: false, fish: false };
 
 function formatCacheSize(bytes) {
   const mb = bytes / (1024 * 1024);
@@ -1984,13 +2118,14 @@ function renderCachePanel() {
     volcano: $("#sf_cache_list_volcano"),
     minimax: $("#sf_cache_list_minimax"),
     moss: $("#sf_cache_list_moss"),
+    fish: $("#sf_cache_list_fish"),
   };
   if (!lists.siliconflow.length) return;
 
-  const buckets = { siliconflow: [], volcano: [], minimax: [], moss: [] };
+  const buckets = { siliconflow: [], volcano: [], minimax: [], moss: [], fish: [] };
   ttsAudioCache.forEach((entry, key) => {
     if (!entry || typeof entry !== "object") return;
-    const engine = entry.engine === "volcano" || entry.engine === "minimax" || entry.engine === "moss" ? entry.engine : "siliconflow";
+    const engine = entry.engine in buckets ? entry.engine : "siliconflow";
     buckets[engine].push({ key, entry });
   });
 
@@ -2112,6 +2247,22 @@ function buildMossVoiceOptions() {
   select.val(current);
 }
 
+function buildFishVoiceOptions() {
+  const select = $("#fish_voice_id");
+  if (!select.length) return;
+  const s = extension_settings[extensionName] || {};
+  const current = String(s.fishVoiceId || "").trim();
+  const voices = Array.isArray(s.fishVoices) ? s.fishVoices : [];
+  select.empty().append($("<option>").val("").text("请选择我的音色"));
+  voices.forEach((voice) => {
+    if (voice?.id) select.append($("<option>").val(voice.id).text(voice.name || voice.id));
+  });
+  if (current && !voices.some((voice) => voice.id === current)) {
+    select.append($("<option>").val(current).text(current + "（已保存）"));
+  }
+  select.val(current);
+}
+
 // 引擎切换时：显示对应配置组，刷新角色音色映射
 function updateEngineUI() {
   const engine = getEngine();
@@ -2120,6 +2271,7 @@ function updateEngineUI() {
   $("#sf_engine_volcano").toggle(engine === "volcano");
   $("#sf_engine_minimax").toggle(engine === "minimax");
   $("#sf_engine_moss").toggle(engine === "moss");
+  $("#sf_engine_fish").toggle(engine === "fish");
   renderRoleVoiceMap();
 }
 
@@ -4190,10 +4342,10 @@ jQuery(async () => {
   // ===== 引擎切换 =====
   $("#tts_engine").on("change", function() {
     const v = $(this).val();
-    extension_settings[extensionName].engine = v === "volcano" || v === "minimax" || v === "moss" ? v : "siliconflow";
+    extension_settings[extensionName].engine = v === "volcano" || v === "minimax" || v === "moss" || v === "fish" ? v : "siliconflow";
     updateEngineUI();
     saveSettingsDebounced();
-    ttsLog("🔀 已切换到「" + ({ siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax", moss: "MOSS" }[getEngine()]) + "」");
+    ttsLog("🔀 已切换到「" + ({ siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax", moss: "MOSS", fish: "Fish Audio" }[getEngine()]) + "」");
   });
 
   // ===== 火山设置自动保存 =====
@@ -4520,6 +4672,41 @@ jQuery(async () => {
     }
   });
 
+  $("#fish_api_key, #fish_voice_id_manual").on("input", function() {
+    syncFishSettingsFromUi();
+    saveSettingsDebounced();
+    renderRoleVoiceMap();
+  });
+  $("#fish_model").on("change", function() {
+    syncFishSettingsFromUi();
+    saveSettingsDebounced();
+  });
+  $("#fish_voice_id").on("change", function() {
+    $("#fish_voice_id_manual").val("");
+    syncFishSettingsFromUi();
+    saveSettingsDebounced();
+    renderRoleVoiceMap();
+  });
+  $("#refresh_fish_voices, #test_fish_connection").on("click", async function() {
+    const button = $(this);
+    const testing = this.id === "test_fish_connection";
+    const status = $("#fish_connection_status");
+    button.prop("disabled", true);
+    if (testing) status.text("测试中…").css("color", "#ffd54a");
+    try {
+      const voices = await refreshFishVoices(!testing);
+      status.text("已连接").css("color", "green");
+      if (testing) toastr.success(`API Key 有效，已读取 ${voices.length} 个账号音色`, "Fish Audio");
+    } catch (e) {
+      status.text("未连接").css("color", "red");
+      const message = e && e.message ? e.message : String(e);
+      ttsLog("Fish Audio 音色列表失败：" + message);
+      toastr.error(message, testing ? "Fish Audio 连接失败" : "Fish Audio 音色列表");
+    } finally {
+      button.prop("disabled", false);
+    }
+  });
+
   // ===== 缓存面板操作（事件委托） =====
   $(document).on("click", ".sf-cache-play", function() {
     const entry = ttsAudioCache.get($(this).closest(".sf-cache-row").attr("data-key"));
@@ -4550,14 +4737,14 @@ jQuery(async () => {
   $(document).on("click", ".sf-cache-clear", function() {
     const engine = $(this).attr("data-engine");
     ttsAudioCache.forEach((entry, key) => {
-      const entryEngine = entry && (entry.engine === "volcano" || entry.engine === "minimax" || entry.engine === "moss") ? entry.engine : "siliconflow";
+      const entryEngine = entry && entry.engine in cachePanelExpanded ? entry.engine : "siliconflow";
       if (entryEngine === engine) {
         try { URL.revokeObjectURL(entry.url); } catch (e) {}
         ttsAudioCache.delete(key);
       }
     });
     renderCachePanel();
-    const label = { siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax", moss: "MOSS" }[engine] || engine;
+    const label = { siliconflow: "硅基流动", volcano: "火山引擎", minimax: "MiniMax", moss: "MOSS", fish: "Fish Audio" }[engine] || engine;
     toastr.success(`已清空${label}缓存`, "缓存");
   });
   // 缓存列头点击展开/收起（点到「清空」按钮时不触发）

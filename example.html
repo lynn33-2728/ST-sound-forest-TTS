@@ -9,7 +9,7 @@
             <div class="sf-settings">
                 <section class="sf-section sf-progress-note">
                     <small>
-                        • 版本：声林 · 多平台语音 v<span id="sf_version_text"></span>（硅基流动 / 火山引擎 / MiniMax / MOSS）by lynn琳<br>
+                        • 版本：声林 · 多平台语音 v<span id="sf_version_text"></span>（硅基流动 / 火山引擎 / MiniMax / MOSS / Fish Audio）by lynn琳<br>
                         • 按住左侧 🔊 拖动进度条位置，▶ 重听用缓存，不重复扣费。
                     </small>
                 </section>
@@ -32,6 +32,7 @@
                                     <option value="volcano">火山引擎</option>
                                     <option value="minimax">MiniMax</option>
                                     <option value="moss">MOSS</option>
+                                    <option value="fish">Fish Audio</option>
                                 </select>
                             </div>
 
@@ -349,7 +350,53 @@
                                 </section>
                             </div>
 
-                            <!-- ---------- 三引擎共用 ---------- -->
+                            <!-- ---------- Fish Audio 组 ---------- -->
+                            <div id="sf_engine_fish" class="sf-engine-block" style="display: none;">
+                                <section class="sf-section">
+                                    <h4>Fish Audio · API设定</h4>
+                                    <div class="sf-help-line">从 <a href="https://fish.audio/zh-CN/developers/" target="_blank" rel="noopener noreferrer">Fish Audio 开发者页面</a> 获取 API Key。</div>
+                                    <div class="sf-setting-row">
+                                        <label for="fish_api_key">API Key：</label>
+                                        <input id="fish_api_key" type="password" placeholder="输入 Fish Audio API Key" />
+                                    </div>
+                                    <div class="setting-item button-group">
+                                        <button type="button" id="test_fish_connection" class="menu_button">测试连接</button>
+                                        <button type="button" class="menu_button sf-save-api-settings">保存API设置</button>
+                                        <span id="fish_connection_status" style="color: red;">未连接</span>
+                                    </div>
+                                </section>
+                                <section class="sf-section">
+                                    <h4>语音设定</h4>
+                                    <div class="setting-item">
+                                        <label for="fish_model">TTS模型</label>
+                                        <select id="fish_model">
+                                            <option value="s2.1-pro-free">S2.1 Pro Free（开发者免费档）</option>
+                                            <option value="s2.1-pro">S2.1 Pro（按量计费）</option>
+                                            <option value="s2-pro">S2 Pro（按量计费）</option>
+                                        </select>
+                                        <small>默认使用免费档；请求失败时不会自动切换到付费模型。</small>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="fish_voice_id">语音角色 / reference_id</label>
+                                        <select id="fish_voice_id"></select>
+                                        <input type="text" id="fish_voice_id_manual" placeholder="手动粘贴音色 ID，填写后优先使用" />
+                                    </div>
+                                    <div class="setting-item">
+                                        <button type="button" id="refresh_fish_voices" class="menu_button">刷新我的音色</button>
+                                    </div>
+                                    <small>先在官网克隆或选择音色，再刷新列表；列表为空时也可手动填写音色 ID。</small>
+                                </section>
+                                <section class="sf-section">
+                                    <details>
+                                        <summary>克隆音色（在官网完成）</summary>
+                                        <div class="setting-item button-group">
+                                            <a class="menu_button" href="https://fish.audio/zh-CN/app/" target="_blank" rel="noopener noreferrer">前往 Fish Audio 克隆音色</a>
+                                        </div>
+                                    </details>
+                                </section>
+                            </div>
+
+                            <!-- ---------- 各引擎共用 ---------- -->
                             <section class="sf-section">
                                 <h4>通用</h4>
                                 <div class="setting-item button-group sf-checkbox-inline-row">
@@ -365,7 +412,7 @@
                                     <summary style="font-size: 1.05em; font-weight: bold;">多人角色音色</summary>
                                     <div class="sf-collapse-body">
                                         <div class="setting-item button-group sf-role-voice-tools">
-                                            <small>群聊里会按消息名字匹配音色；没设置的角色使用上面的默认语音角色。硅基 / 火山 / MiniMax / MOSS 分开保存，互不影响。</small>
+                                            <small>群聊里会按消息名字匹配音色；没设置的角色使用上面的默认语音角色。各引擎分别保存音色设置。</small>
                                             <button id="refresh_role_voices" class="menu_button" type="button">刷新当前聊天角色</button>
                                         </div>
                                         <div id="tts_role_voice_map" class="sf-role-voice-map">
@@ -532,6 +579,15 @@
                                         <button type="button" class="menu_button sf-cache-clear" data-engine="moss">清空</button>
                                     </div>
                                     <div id="sf_cache_list_moss" class="sf-cache-list" style="display: none;"><small>暂无缓存</small></div>
+                                </div>
+                                <div class="sf-cache-col">
+                                    <div class="sf-cache-col-head sf-cache-toggle" data-engine="fish" title="点击展开/收起缓存列表">
+                                        <span class="sf-cache-arrow" id="sf_cache_arrow_fish">▸</span>
+                                        <strong>Fish Audio</strong>
+                                        <span class="sf-cache-stats sf-cache-stats-fish" id="sf_cache_stats_fish"></span>
+                                        <button type="button" class="menu_button sf-cache-clear" data-engine="fish">清空</button>
+                                    </div>
+                                    <div id="sf_cache_list_fish" class="sf-cache-list" style="display: none;"><small>暂无缓存</small></div>
                                 </div>
                             </div>
                         </section>
